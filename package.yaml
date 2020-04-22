@@ -1,0 +1,58 @@
+name: autoapply
+version: 0.1.0.0
+synopsis: Template Haskell to automatically pass values to functions
+description: See readme.md
+category: Template Haskell
+maintainer: Joe Hermaszewski <if.it.fits.i.sits@monoid.al>
+copyright: (c) 2020 Joe Hermaszewski
+github: expipiplus1/autoapply
+extra-source-files:
+  - readme.md
+  - default.nix
+
+library:
+  source-dirs: src
+  dependencies:
+    - base < 5
+    - logict
+    - mtl
+    - template-haskell
+    - th-desugar
+    - transformers
+    - unification-fd
+
+tests:
+  doctests:
+    main: Doctests.hs
+    other-modules: ""
+    source-dirs:
+      - test
+    dependencies:
+      - base
+      - doctest
+
+custom-setup:
+ dependencies:
+   - base
+   - Cabal
+   - cabal-doctest >= 1 && <1.1
+
+ghc-options:
+  - -Wall
+
+default-extensions:
+  - DeriveFoldable
+  - DeriveFunctor
+  - DeriveTraversable
+  - DerivingStrategies
+  - FlexibleContexts
+  - KindSignatures
+  - LambdaCase
+  - PatternSynonyms
+  - RankNTypes
+  - RecordWildCards
+  - ScopedTypeVariables
+  - TemplateHaskellQuotes
+  - TupleSections
+  - TypeFamilies
+  - ViewPatterns

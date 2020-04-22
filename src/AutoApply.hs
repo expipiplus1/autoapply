@@ -1,43 +1,33 @@
-{-# language TupleSections #-}
-{-# language DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
-{-# language TemplateHaskellQuotes #-}
-
 module AutoApply
-  where
+  ( autoapply
+  , autoapplyDecs
+  ) where
 
 import           Control.Applicative
 import           Control.Arrow                  ( (>>>) )
 import           Control.Monad
-import           Control.Monad.Extra
 import           Control.Monad.Logic            ( LogicT
                                                 , observeManyT
-                                                , observeT
                                                 )
 import           Control.Monad.Logic.Class      ( ifte )
 import           Control.Monad.Trans           as T
 import           Control.Monad.Trans.Except
-import           Control.Monad.Trans.Identity
 import           Control.Unification
 import           Control.Unification.IntVar
 import           Control.Unification.Types
 import           Data.Foldable
 import           Data.Functor
 import           Data.Functor.Fixedpoint
-import           Data.Generics.Uniplate.Data
-import           Data.List                      ( find )
 import           Data.Maybe
 import           Data.Traversable
-import           Data.Tuple.Extra               ( uncurry3 )
 import           Language.Haskell.TH
 import           Language.Haskell.TH.Desugar
-import           Language.Haskell.TH.Quote
-import           Language.Haskell.TH.Syntax
 
 data Command = Command
   { cName :: Name
   , cType :: DType
   }
-  deriving Show
+  deriving (Show)
 
 data Given = Given
   { gName :: Name
@@ -45,27 +35,32 @@ data Given = Given
   }
   deriving (Show)
 
-stripForall = \case
-  DForallT vs _ ty -> (fmap varBndrName vs, ty)
-  ty               -> ([], ty)
+autoapply :: [Name] -> Name -> Q Exp
+autoapply givens fun = do
+  getterInfos <- for givens $ \n -> dsReify n >>= \case
+    Just (DVarI name ty _) -> pure $ Given name ty
+    _                      -> fail $ "Getter isn't a value " <> show n
+  funInfo <- dsReify fun >>= \case
+    Just (DVarI name ty _) -> pure (Command name ty)
+    _                      -> fail $ "Function isn't a value " <> show fun
+  exp' <- autoapply1 getterInfos funInfo
+  pure (sweeten exp')
 
-pattern (:~>) :: DType -> DType -> DType
-pattern l :~> r = DArrowT `DAppT` l `DAppT` r
-
-remix :: [Name] -> [Name] -> Q [Dec]
-remix givens funs = do
+autoapplyDecs :: [Name] -> [Name] -> Q [Dec]
+autoapplyDecs givens funs = do
   getterInfos <- for givens $ \n -> dsReify n >>= \case
     Just (DVarI name ty _) -> pure $ Given name ty
     _                      -> fail $ "Getter isn't a value " <> show n
   funInfos <- for funs $ \n -> dsReify n >>= \case
     Just (DVarI name ty _) -> pure (Command name ty)
     _                      -> fail $ "Function isn't a value " <> show n
-  -- runIO $
-  --   writeFile "/home/j/projects/vulkan/a" (show (getterInfos,funInfos))
-  sweeten <$> traverse (remix1 getterInfos) funInfos
+  let mkFun fun = do
+        exp' <- autoapply1 getterInfos fun
+        pure $ lamToFunDec (mkName (nameBase (cName fun) <> "'")) exp'
+  sweeten <$> traverse mkFun funInfos
 
-remix1 :: [Given] -> Command -> Q DDec
-remix1 getters fun = do
+autoapply1 :: [Given] -> Command -> Q DExp
+autoapply1 getters fun = do
   -- In this function we:
   --
   -- - Instantiate the command type with new unification variables
@@ -84,7 +79,6 @@ remix1 getters fun = do
       genProvs :: LogicT Q [ArgProvenance]
       genProvs = evalIntBindingT $ do
         instArgs <- traverse (inst cmdVars . snd <=< liftQ . typeDtoF) args
-        instRet  <- inst cmdVars . snd <=< liftQ . typeDtoF $ ret
 
         -- This is @Just (m, a)@ when m is Applicative
         retMonad <- case ret of
@@ -117,7 +111,7 @@ remix1 getters fun = do
                   a' <- inst vars . snd <=< liftQ . typeDtoF $ a
                   v  <- liftQ $ newName "g"
                   let predicate = do
-                        unify m' cmdM
+                        _ <- unify m' cmdM
                         pure ()
                   pure $ Just (a', predicate, Bound v g)
             _ -> pure Nothing
@@ -146,22 +140,19 @@ remix1 getters fun = do
     "\"Impossible\", incorrect number of argument provenances were found"
 
   let assignGetter = \case
-        BoundPure n g -> Nothing
+        BoundPure _ _ -> Nothing
         Bound     n g -> Just $ BindS (VarP n) (VarE (gName g))
         Argument _    -> Nothing
-      bs  = catMaybes (assignGetter <$> argProvenances)
-      ret = foldl
-        AppE
-        (VarE (cName fun))
+      bs   = catMaybes (assignGetter <$> argProvenances)
+      ret' = applyDExp
+        (DVarE (cName fun))
         (argProvenances <&> \case
-          Bound     n _           -> VarE n
-          BoundPure _ (Given n _) -> VarE n
-          Argument n              -> VarE n
+          Bound     n _           -> DVarE n
+          BoundPure _ (Given n _) -> DVarE n
+          Argument n              -> DVarE n
         )
-  exp <- dsDoStmts (bs <> [NoBindS ret])
-  pure . DLetDec $ DFunD
-    (mkName (nameBase (cName fun) <> "'"))
-    [DClause [ DVarP n | Argument n <- argProvenances ] exp]
+  exp' <- dsDoStmts (bs <> [NoBindS (sweeten ret')])
+  pure $ DLamE [ n | Argument n <- argProvenances ] exp'
 
 data ArgProvenance
   = Bound Name Given
@@ -169,43 +160,8 @@ data ArgProvenance
   | Argument Name
   deriving (Show)
 
-note :: String -> Maybe a -> Q a
-note s = maybe (fail s) pure
-
 ----------------------------------------------------------------
--- Subsumes
-----------------------------------------------------------------
-
--- | Does one type subsume another. The subsuming type must be quantified.
---
--- Doesn't handle higher rank types.
-subsumes' :: DType -> DType -> Q Bool
-subsumes' t1 t2 = do
-  r <- evalIntBindingT $ do
-    (vs1, t1f) <- T.lift $ typeDtoF =<< expandType t1
-    (_  , t2f) <- T.lift $ typeDtoF =<< expandType t2
-    t1i        <- inst vs1 t1f
-    t2i        <- inst [] t2f
-    runExceptT $ subsumes t1i t2i
-  case r of
-    Left  (f :: UFailure TypeF IntVar) -> fail (show f)
-    Right s                            -> pure s
-
--- | Print if n1 subsumes n2 along with their types.
-subsumesDebug :: Name -> Name -> Q ()
-subsumesDebug n1 n2 = do
-  Just (DVarI _ t1 _) <- dsReify n1
-  Just (DVarI _ t2 _) <- dsReify n2
-  -- runIO . print . unravel $ t1
-  -- runIO . print . unravel $ t2
-  j                   <- subsumes' t1 t2 >>= \case
-    False -> pure " doesn't subsume "
-    True  -> pure " subsumes "
-  let s = show . ppr . sweeten
-  runIO . putStrLn $ s t1 <> "\n  " <> j <> "\n  " <> s t2
-
-----------------------------------------------------------------
--- Haskell types as a fixed point over TypeF
+-- Haskell types as a fixed point of TypeF
 ----------------------------------------------------------------
 
 data TypeF a
@@ -216,6 +172,7 @@ data TypeF a
   | LitF TyLit
   deriving (Show, Functor, Foldable, Traversable)
 
+-- | TODO: Derive this with generics
 instance Unifiable TypeF where
   zipMatch (AppF l1 r1) (AppF l2 r2) =
     Just (AppF (Right (l1, l2)) (Right (r1, r2)))
@@ -228,16 +185,14 @@ instance Unifiable TypeF where
 -- | Returns the type as a @Fix TypeF@ along with any quantified names. Drops
 -- any context.
 typeDtoF :: MonadFail m => DType -> m ([Name], Fix TypeF)
-typeDtoF = raiseForalls >>> \case
-  DForallT vs _ ty -> (varBndrName <$> vs, ) <$> go ty
-  ty               -> ([], ) <$> go ty
+typeDtoF = traverse go . stripForall
  where
   go = \case
     DForallT{} -> fail "TODO: Higher ranked types"
     DAppT l r  -> do
-      l <- go l
-      r <- go r
-      pure $ Fix (AppF l r)
+      l' <- go l
+      r' <- go r
+      pure $ Fix (AppF l' r')
     DAppKindT t _ -> go t
     DSigT     t _ -> go t
     DVarT n       -> pure . Fix $ VarF n
@@ -246,13 +201,14 @@ typeDtoF = raiseForalls >>> \case
     DLitT l       -> pure . Fix $ LitF l
     DWildCardT    -> fail "TODO: Wildcards"
 
+varBndrName :: DTyVarBndr -> Name
 varBndrName = \case
   DPlainTV n    -> n
   DKindedTV n _ -> n
 
 -- | Raise foralls on the spine of the function type to the top
 --
--- For examples @forall a. a -> forall b. b@ becomes @forall a b. a -> b@
+-- For example @forall a. a -> forall b. b@ becomes @forall a b. a -> b@
 raiseForalls :: DType -> DType
 raiseForalls = uncurry3 DForallT . go
  where
@@ -261,6 +217,9 @@ raiseForalls = uncurry3 DForallT . go
       let (vs', ctx', t') = go t in (vs <> vs', ctx <> ctx', t')
     l :~> r -> let (vs, ctx, r') = go r in (vs, ctx, l :~> r')
     t       -> ([], [], t)
+
+pattern (:~>) :: DType -> DType -> DType
+pattern l :~> r = DArrowT `DAppT` l `DAppT` r
 
 -- | Instantiate a type with unification variables
 inst
@@ -278,3 +237,23 @@ inst ns t = do
         ArrowF                         -> UTerm ArrowF
         LitF l                         -> UTerm (LitF l)
   pure $ go t
+
+----------------------------------------------------------------
+-- Utils
+----------------------------------------------------------------
+
+stripForall :: DType -> ([Name], DType)
+stripForall = raiseForalls >>> \case
+  DForallT vs _ ty -> (varBndrName <$> vs, ty)
+  ty               -> ([], ty)
+
+lamToFunDec :: Name -> DExp -> DDec
+lamToFunDec funName = \case
+  DLamE ns e -> DLetDec $ DFunD funName [DClause (DVarP <$> ns) e]
+  e          -> DLetDec $ DFunD funName [DClause [] e]
+
+uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
+uncurry3 f (a, b, c) = f a b c
+
+note :: MonadFail m => String -> Maybe a -> m a
+note s = maybe (fail s) pure

@@ -1,0 +1,66 @@
+cabal-version: 1.24
+
+-- This file has been generated from package.yaml by hpack version 0.33.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 12f7c729062c0e14c540f5cb22aee1461edb7195af7343e67fe06ebd9d60c56c
+
+name:           autoapply
+version:        0.1.0.0
+synopsis:       Template Haskell to automatically pass values to functions
+description:    See readme.md
+category:       Template Haskell
+homepage:       https://github.com/expipiplus1/autoapply#readme
+bug-reports:    https://github.com/expipiplus1/autoapply/issues
+maintainer:     Joe Hermaszewski <if.it.fits.i.sits@monoid.al>
+copyright:      (c) 2020 Joe Hermaszewski
+license:        BSD3
+license-file:   LICENSE
+build-type:     Custom
+extra-source-files:
+    readme.md
+    default.nix
+
+source-repository head
+  type: git
+  location: https://github.com/expipiplus1/autoapply
+
+custom-setup
+  setup-depends:
+      Cabal
+    , base
+    , cabal-doctest >=1 && <1.1
+
+library
+  exposed-modules:
+      AutoApply
+  other-modules:
+      Paths_autoapply
+  hs-source-dirs:
+      src
+  default-extensions: DeriveFoldable DeriveFunctor DeriveTraversable DerivingStrategies FlexibleContexts KindSignatures LambdaCase PatternSynonyms RankNTypes RecordWildCards ScopedTypeVariables TemplateHaskellQuotes TupleSections TypeFamilies ViewPatterns
+  ghc-options: -Wall
+  build-depends:
+      base <5
+    , logict
+    , mtl
+    , template-haskell
+    , th-desugar
+    , transformers
+    , unification-fd
+  default-language: Haskell2010
+
+test-suite doctests
+  type: exitcode-stdio-1.0
+  main-is: Doctests.hs
+  other-modules:
+      
+  hs-source-dirs:
+      test
+  default-extensions: DeriveFoldable DeriveFunctor DeriveTraversable DerivingStrategies FlexibleContexts KindSignatures LambdaCase PatternSynonyms RankNTypes RecordWildCards ScopedTypeVariables TemplateHaskellQuotes TupleSections TypeFamilies ViewPatterns
+  ghc-options: -Wall
+  build-depends:
+      base
+    , doctest
+  default-language: Haskell2010
