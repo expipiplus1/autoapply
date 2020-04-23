@@ -1,5 +1,4 @@
 {-# language TemplateHaskell #-}
-{-# language NoMonomorphismRestriction #-}
 {-# language GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 
@@ -64,22 +63,6 @@ aBar = undefined
 test1 :: Foo -> Bar -> m ()
 test1 = undefined
 
--- | Two monadic bindings with incompatible types
---
--- >>> x = $(autoapply ['getFooSem, 'getBarIO] 'test10)
--- >>> :t x
--- x :: MyConstraint m => Bar -> MyMonadT m ()
-test10 :: Foo -> Bar -> m ()
-test10 = undefined
-
--- | Monadic binding with incompatible type
---
--- >>> x = $(autoapply ['getFooSem, 'getBarIO] 'test11)
--- >>> :t x
--- x :: Foo -> IO ()
-test11 :: Foo -> Bar -> IO ()
-test11 = undefined
-
 -- | 'aBar' is substituted and 'Foo' is left as an argument
 --
 -- >>> x = $(autoapply ['aBar] 'test2)
@@ -111,19 +94,26 @@ test5 = const ()
 
 -- | 'id' does not get substituted at @(forall a b. a -> b)@
 --
--- >>> :t test6'
--- test6' :: (forall a b. a -> b) -> ()
+-- >>> x = $(autoapply ['id] 'test6)
+-- >>> :t x
+-- x :: (forall a b. a -> b) -> ()
+--
+-- 'undefined' does
+-- >>> x = $(autoapply ['undefined] 'test6)
+-- >>> :t x
+-- x :: ()
 test6 :: (forall a b. a -> b) -> ()
 test6 = const ()
-autoapplyDecs ['id] ['test6]
+autoapplyDecs (<> "'") ['id] ['test6]
+test6' :: (forall a b. a -> b) -> ()
 
 -- | @aBar :: Bar@ does not get substituted at @forall a. a@
 --
--- >>> :t test7'
--- test7' :: (forall a. a) -> ()
+-- >>> x = $(autoapply ['aBar] 'test7)
+-- >>> :t x
+-- x :: (forall a. a) -> ()
 test7 :: (forall a. a) -> ()
 test7 = const ()
-autoapplyDecs ['aBar] ['test7]
 
 -- | 'id' is instantiated twice at different types
 -- >>> $(autoapply ['id] 'test8)
@@ -138,6 +128,28 @@ test8 = const (const ())
 -- x :: [a] -> [a]
 test9 :: ([a] -> b) -> [a] -> b
 test9 = test9
+
+-- | Two monadic bindings with types incompatible with one another
+--
+-- >>> x = $(autoapply ['getFooSem, 'getBarIO] 'test10)
+-- >>> :t x
+-- x :: MyConstraint m => Bar -> MyMonadT m ()
+--
+-- Responds to the order of types in the applying function, not the order types
+-- of values to be passed.
+-- >>> x = $(autoapply ['getBarIO, 'getFooSem] 'test10)
+-- >>> :t x
+-- x :: MyConstraint m => Bar -> MyMonadT m ()
+test10 :: Foo -> Bar -> m ()
+test10 = undefined
+
+-- | Monadic binding with incompatible type
+--
+-- >>> x = $(autoapply ['getFooSem, 'getBarIO] 'test11)
+-- >>> :t x
+-- x :: Foo -> IO ()
+test11 :: Foo -> Bar -> IO ()
+test11 = undefined
 
 -- | Several instantiations of the same function
 --

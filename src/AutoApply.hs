@@ -43,11 +43,10 @@ autoapply givens fun = do
   funInfo <- dsReify fun >>= \case
     Just (DVarI name ty _) -> pure (Command name ty)
     _                      -> fail $ "Function isn't a value " <> show fun
-  exp' <- autoapply1 getterInfos funInfo
-  pure (sweeten exp')
+  autoapply1 getterInfos funInfo
 
-autoapplyDecs :: [Name] -> [Name] -> Q [Dec]
-autoapplyDecs givens funs = do
+autoapplyDecs :: (String -> String) -> [Name] -> [Name] -> Q [Dec]
+autoapplyDecs getNewName givens funs = do
   getterInfos <- for givens $ \n -> dsReify n >>= \case
     Just (DVarI name ty _) -> pure $ Given name ty
     _                      -> fail $ "Getter isn't a value " <> show n
@@ -56,10 +55,11 @@ autoapplyDecs givens funs = do
     _                      -> fail $ "Function isn't a value " <> show n
   let mkFun fun = do
         exp' <- autoapply1 getterInfos fun
-        pure $ lamToFunDec (mkName (nameBase (cName fun) <> "'")) exp'
-  sweeten <$> traverse mkFun funInfos
+        pure $ FunD (mkName . getNewName . nameBase . cName $ fun)
+                    [Clause [] (NormalB exp') []]
+  traverse mkFun funInfos
 
-autoapply1 :: [Given] -> Command -> Q DExp
+autoapply1 :: [Given] -> Command -> Q Exp
 autoapply1 getters fun = do
   -- In this function we:
   --
@@ -128,9 +128,9 @@ autoapply1 getters fun = do
               >>= \case
                     Left  (_ :: UFailure TypeF IntVar) -> empty
                     Right _                            -> pure g
-        for as $ \case
-          Just p  -> pure p
-          Nothing -> Argument <$> liftQ (newName "a")
+        for (zip args as) $ \case
+          (_, Just p ) -> pure p
+          (t, Nothing) -> (`Argument` t) <$> liftQ (newName "a")
 
   argProvenances <-
     note "\"Impossible\" Finding argument provenances failed"
@@ -142,22 +142,24 @@ autoapply1 getters fun = do
   let assignGetter = \case
         BoundPure _ _ -> Nothing
         Bound     n g -> Just $ BindS (VarP n) (VarE (gName g))
-        Argument _    -> Nothing
+        Argument  _ _ -> Nothing
       bs   = catMaybes (assignGetter <$> argProvenances)
       ret' = applyDExp
         (DVarE (cName fun))
         (argProvenances <&> \case
           Bound     n _           -> DVarE n
           BoundPure _ (Given n _) -> DVarE n
-          Argument n              -> DVarE n
+          Argument  n _           -> DVarE n
         )
   exp' <- dsDoStmts (bs <> [NoBindS (sweeten ret')])
-  pure $ DLamE [ n | Argument n <- argProvenances ] exp'
+  -- Typing the arguments here is important
+  pure $ LamE [ SigP (VarP n) (sweeten t) | Argument n t <- argProvenances ]
+              (sweeten exp')
 
 data ArgProvenance
   = Bound Name Given
   | BoundPure Name Given
-  | Argument Name
+    | Argument Name DType
   deriving (Show)
 
 ----------------------------------------------------------------
@@ -246,11 +248,6 @@ stripForall :: DType -> ([Name], DType)
 stripForall = raiseForalls >>> \case
   DForallT vs _ ty -> (varBndrName <$> vs, ty)
   ty               -> ([], ty)
-
-lamToFunDec :: Name -> DExp -> DDec
-lamToFunDec funName = \case
-  DLamE ns e -> DLetDec $ DFunD funName [DClause (DVarP <$> ns) e]
-  e          -> DLetDec $ DFunD funName [DClause [] e]
 
 uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
 uncurry3 f (a, b, c) = f a b c
