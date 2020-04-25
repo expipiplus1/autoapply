@@ -1,11 +1,15 @@
-{-# language TemplateHaskell #-}
-{-# language GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
+{-# OPTIONS_GHC -Wno-missing-methods #-}
 
 module Types where
 
 import           AutoApply
-import           Control.Exception
 import           Control.Monad.IO.Class
 import           Data.Kind
 
@@ -28,28 +32,29 @@ data ReleaseKey
 myAllocate :: MonadResource m => IO a -> (a -> IO ()) -> m (ReleaseKey, a)
 myAllocate = undefined
 
-data Foo
-data Bar
+data Baz
+data Qux
 
 class Monad m => MyConstraint (m :: Type -> Type) where
 
 newtype MyMonadT a b = MyMonadT (a b)
   deriving newtype (Functor, Applicative, Monad)
 
-getFooSem :: MyConstraint m => MyMonadT m Foo
-getFooSem = undefined
+getBazSem :: MyConstraint m => MyMonadT m Baz
+getBazSem = undefined
 
-getBar :: m Bar
-getBar = undefined
+getQux :: m Qux
+getQux = undefined
 
-getBarIO :: IO Bar
-getBarIO = undefined
+getQuxIO :: IO Qux
+getQuxIO = undefined
 
-aBar :: Bar
-aBar = undefined
+aQux :: Qux
+aQux = undefined
 
--- $
+-- $setup
 -- >>> :set -XTemplateHaskell
+-- >>> import Control.Exception
 
 ----------------------------------------------------------------
 -- Tests
@@ -57,18 +62,18 @@ aBar = undefined
 
 -- | Two monadic bindings
 --
--- >>> x = $(autoapply ['getFooSem, 'getBar] 'test1)
+-- >>> x = $(autoapply ['getBazSem, 'getQux] 'test1)
 -- >>> :t x
 -- x :: MyConstraint m => MyMonadT m ()
-test1 :: Foo -> Bar -> m ()
+test1 :: Baz -> Qux -> m ()
 test1 = undefined
 
--- | 'aBar' is substituted and 'Foo' is left as an argument
+-- | 'aQux' is substituted and 'Baz' is left as an argument
 --
--- >>> x = $(autoapply ['aBar] 'test2)
+-- >>> x = $(autoapply ['aQux] 'test2)
 -- >>> :t x
--- x :: Foo -> m ()
-test2 :: Foo -> Bar -> m ()
+-- x :: Baz -> m ()
+test2 :: Baz -> Qux -> m ()
 test2 = undefined
 
 -- | 'id' gets substituted at @(a -> a)@
@@ -85,9 +90,9 @@ test3 = const ()
 test4 :: (a -> b) -> ()
 test4 = const ()
 
--- | @aBar :: Bar@ gets substituted at @a@
+-- | @aQux :: Qux@ gets substituted at @a@
 
--- >>> $(autoapply ['aBar] 'test5)
+-- >>> $(autoapply ['aQux] 'test5)
 -- ()
 test5 :: a -> ()
 test5 = const ()
@@ -107,9 +112,9 @@ test6 = const ()
 autoapplyDecs (<> "'") ['id] ['test6]
 test6' :: (forall a b. a -> b) -> ()
 
--- | @aBar :: Bar@ does not get substituted at @forall a. a@
+-- | @aQux :: Qux@ does not get substituted at @forall a. a@
 --
--- >>> x = $(autoapply ['aBar] 'test7)
+-- >>> x = $(autoapply ['aQux] 'test7)
 -- >>> :t x
 -- x :: (forall a. a) -> ()
 test7 :: (forall a. a) -> ()
@@ -118,7 +123,7 @@ test7 = const ()
 -- | 'id' is instantiated twice at different types
 -- >>> $(autoapply ['id] 'test8)
 -- ()
-test8 :: (Foo -> Foo) -> (Bar -> Bar) -> ()
+test8 :: (Baz -> Baz) -> (Qux -> Qux) -> ()
 test8 = const (const ())
 
 -- | The return type changes
@@ -131,40 +136,40 @@ test9 = test9
 
 -- | Two monadic bindings with types incompatible with one another
 --
--- >>> x = $(autoapply ['getFooSem, 'getBarIO] 'test10)
+-- >>> x = $(autoapply ['getBazSem, 'getQuxIO] 'test10)
 -- >>> :t x
--- x :: MyConstraint m => Bar -> MyMonadT m ()
+-- x :: MyConstraint m => Qux -> MyMonadT m ()
 --
 -- Responds to the order of types in the applying function, not the order types
 -- of values to be passed.
--- >>> x = $(autoapply ['getBarIO, 'getFooSem] 'test10)
+-- >>> x = $(autoapply ['getQuxIO, 'getBazSem] 'test10)
 -- >>> :t x
--- x :: MyConstraint m => Bar -> MyMonadT m ()
-test10 :: Foo -> Bar -> m ()
+-- x :: MyConstraint m => Qux -> MyMonadT m ()
+test10 :: Baz -> Qux -> m ()
 test10 = undefined
 
 -- | Monadic binding with incompatible type
 --
--- >>> x = $(autoapply ['getFooSem, 'getBarIO] 'test11)
+-- >>> x = $(autoapply ['getBazSem, 'getQuxIO] 'test11)
 -- >>> :t x
--- x :: Foo -> IO ()
-test11 :: Foo -> Bar -> IO ()
+-- x :: Baz -> IO ()
+test11 :: Baz -> Qux -> IO ()
 test11 = undefined
 
 -- | Several instantiations of the same function
 --
--- >>> x = $(autoapply ['bracket, 'getFooSem, 'aBar] 'test12)
+-- >>> x = $(autoapply ['bracket, 'getBazSem, 'aQux] 'test12)
 -- >>> :t x
--- x :: Foo -> (a -> IO c) -> IO c
+-- x :: Baz -> (a -> IO c) -> IO c
 --
--- >>> x = $(autoapply ['myBracket, 'aBar] 'test12)
+-- >>> x = $(autoapply ['myBracket, 'aQux] 'test12)
 -- >>> :t x
--- x :: MyConstraint m => Foo -> (a -> MyMonadT m b) -> MyMonadT m b
+-- x :: MyConstraint m => Baz -> (a -> MyMonadT m b) -> MyMonadT m b
 --
--- >>> x = $(autoapply ['myAllocate, 'aBar] 'test12)
+-- >>> x = $(autoapply ['myAllocate, 'aQux] 'test12)
 -- >>> :t x
--- x :: MonadResource m => Foo -> m (ReleaseKey, a)
-test12 :: (m a -> (a -> m b) -> c) -> Foo -> Bar -> c
+-- x :: MonadResource m => Baz -> m (ReleaseKey, a)
+test12 :: (m a -> (a -> m b) -> c) -> Baz -> Qux -> c
 test12 = undefined
 
 -- |
@@ -175,3 +180,35 @@ test12 = undefined
 exitFailure :: IO a
 exitFailure = undefined
 
+----------------------------------------------------------------
+-- Examples from readme
+----------------------------------------------------------------
+
+
+class Member a (r :: [Type]) where
+data Sem (r :: [Type]) a
+instance Functor (Sem r)
+instance Applicative (Sem r)
+instance Monad (Sem r)
+data Input a
+input :: Member (Input a) r => Sem r a
+input = undefined
+
+data Instance
+data ExtraOpenInfo
+data Foo
+data Bar
+data Handle
+openHandle :: MonadIO m => Instance -> Maybe ExtraOpenInfo -> m Handle
+openHandle = undefined
+closeHandle :: MonadIO m => Instance -> Handle -> m ()
+closeHandle = undefined
+useHandle :: MonadIO m => Instance -> Handle -> Foo -> m Bar
+useHandle = undefined
+
+myExtraOpenInfo :: Maybe ExtraOpenInfo
+myExtraOpenInfo = Nothing
+getInstance :: Member (Input Instance) r => Sem r Instance
+getInstance = input
+
+autoapplyDecs (<> "'") ['myExtraOpenInfo, 'getInstance] ['openHandle, 'closeHandle, 'useHandle]
