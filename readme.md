@@ -9,39 +9,36 @@ One nice use-case is to avoiding writing boilerplate wrappers for using an API
 in your Monad stack. For instance imagine the following API.
 
 ```haskell
-data Instance
-data ExtraOpenInfo
-data Foo
-data Bar
-data Handle
-openHandle :: MonadIO m => Instance -> Maybe ExtraOpenInfo -> m Handle
+data Instance; data ExtraOpenInfo; data Foo; data Bar; data Handle
+openHandle  :: MonadIO m => Instance -> Maybe ExtraOpenInfo -> m Handle
 closeHandle :: MonadIO m => Instance -> Handle -> m ()
-useHandle :: MonadIO m => Instance -> Handle -> Foo -> m Bar
+useHandle   :: MonadIO m => Instance -> Handle -> Foo -> m Bar
 ```
 
-You'd like to use this in your `polysemy` application, using the `Input`
-effect to pass the `Instance` handle around, and always passing `Nothing` for
-`ExtraOpenInfo` because you don't use that functionality. You define the
-following values.
+You'd like to use this in your `polysemy` application, using the `Input` effect
+to pass the `Instance` handle around, and always passing `Nothing` for
+`ExtraOpenInfo` because you don't use that functionality and getting a `Foo`
+from some other constraint `MyConstraint`. You define the following values.
 
 ```haskell
 myExtraOpenInfo :: Maybe ExtraOpenInfo
 myExtraOpenInfo = Nothing
 getInstance :: Member (Input Instance) r => Sem r Instance
 getInstance = input
+getFoo :: MyConstraint m => m Foo
+getFoo = ...
 ```
 
 You then create the wrapped API thusly:
 
 ```haskell
-autoapplyDecs (<> "'") ['myExtraOpenInfo, 'getInstance] ['openHandle, 'closeHandle, 'useHandle]
+autoapplyDecs
+  (<> "'") -- Function to transform the names of the wrapped functions
+  ['myExtraOpenInfo, 'getInstance, 'getFoo] -- Potential arguments to pass
+  ['openHandle, 'closeHandle, 'useHandle] -- Functions to wrap
 ```
 
-Which creates the following declarations. Notice how the `Instance` is supplied
-with the `Member (Input Instance) r` constraint and the `ExtraOpenInfo` is not
-present at all, being supplied internally by `myExtraOpenInfo`. To see the
-generated code (it's exactly what you'd expect) compile `test/Types.hs` with
-`-ddump-splices`.
+Which creates the following declarations:
 
 ```haskell
 openHandle'
@@ -49,8 +46,17 @@ openHandle'
 closeHandle'
   :: (Member (Input Instance) r, MonadIO (Sem r)) => Handle -> Sem r ()
 useHandle'
-  :: (Member (Input Instance) r, MonadIO (Sem r)) => Handle -> Foo -> Sem r Bar
+  :: (Member (Input Instance) r, MyConstraint (Sem r), MonadIO (Sem r))
+  => Handle -> Sem r Bar
 ```
+
+Notice:
+- `Instance` is supplied with the `Member (Input Instance) r` constraint
+- `Foo` is supplied by `MyConstraint (Sem r)`
+- `ExtraOpenInfo` is not present at all, being supplied internally by `myExtraOpenInfo`
+
+To see the generated code (it's exactly what you'd expect) compile
+`test/Types.hs` with `-ddump-splices`.
 
 ## How to use this
 
@@ -85,6 +91,10 @@ checked.
 Aside for checking for a `Monad` instance, no constraints are checked. So `autoapply`
 will happily pass `reverse` to `(+)` yielding a value of type `Num ([a] -> [a]) => [a] -> [a]`.
 
+Monadic binds are performed in the order of arguments passed to the wrapped
+function, and will be performed more than once if the argument is used multiple
+times.
+
 You may want to either type your generated declarations manually (putting the
 type after the splice) or turn on `-XNoMonomorphismRestriction` if your
 arguments have polymorphic constraints.
@@ -110,4 +120,5 @@ There are a couple of differences here:
 
 - One doesn't need to specify the desired type up front, this tool will just go
   as far as it can.
-- This tool isn't doing any interesting search instead it's just "if it fits, I sits"
+- This tool isn't doing any interesting proof search instead it's just "if it
+  fits, I sits"
