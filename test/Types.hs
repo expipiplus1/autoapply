@@ -172,6 +172,14 @@ test11 = undefined
 test12 :: (m a -> (a -> m b) -> c) -> Baz -> Qux -> c
 test12 = undefined
 
+-- | Can change the type of the output monad
+--
+-- >>> x = $(autoapply ['getQuxIO] 'test13)
+-- >>> :t x
+-- x :: IO Baz
+test13 :: Monad m => Qux -> m Baz
+test13 = undefined
+
 -- |
 --
 -- >>> x = $(autoapply ['exitFailure] 'liftIO)
