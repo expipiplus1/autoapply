@@ -194,11 +194,7 @@ data Input a
 input :: Member (Input a) r => Sem r a
 input = undefined
 
-data Instance
-data ExtraOpenInfo
-data Foo
-data Bar
-data Handle
+data Instance; data ExtraOpenInfo; data Foo; data Bar; data Handle
 openHandle :: MonadIO m => Instance -> Maybe ExtraOpenInfo -> m Handle
 openHandle = undefined
 closeHandle :: MonadIO m => Instance -> Handle -> m ()
@@ -210,5 +206,10 @@ myExtraOpenInfo :: Maybe ExtraOpenInfo
 myExtraOpenInfo = Nothing
 getInstance :: Member (Input Instance) r => Sem r Instance
 getInstance = input
+getFoo :: MyConstraint m => m Foo
+getFoo = undefined
 
-autoapplyDecs (<> "'") ['myExtraOpenInfo, 'getInstance] ['openHandle, 'closeHandle, 'useHandle]
+autoapplyDecs
+  (<> "'")
+  ['myExtraOpenInfo, 'getInstance, 'getFoo]
+  ['openHandle, 'closeHandle, 'useHandle]

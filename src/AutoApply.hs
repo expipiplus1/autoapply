@@ -23,44 +23,46 @@ import           Data.Traversable
 import           Language.Haskell.TH
 import           Language.Haskell.TH.Desugar
 
-data Command = Command
-  { cName :: Name
-  , cType :: DType
-  }
-  deriving (Show)
+-- | @autoapply args fun@ creates an expression which is equal to @fun@ applied
+-- to as many of the values in @args@ as possible.
+autoapply :: [Name] -> Name -> Q Exp
+autoapply givens fun = do
+  givenInfos <- for givens $ fmap (uncurry Given) . reifyVal "Argument"
+  funInfo    <- uncurry Function <$> reifyVal "Function" fun
+  autoapply1 givenInfos funInfo
 
+-- | @autoapplyDecs mkName args funs@ will wrap every function in @funs@ by
+-- applying it to as many of the values in @args@ as possible. The new function
+-- name will be @mkName@ applied to the wrapped function name.
+--
+-- Type signatures are not generated, so you may want to add these yourself or
+-- turn on @NoMonomorphismRestriction@ if you have polymorphic constraints.
+autoapplyDecs :: (String -> String) -> [Name] -> [Name] -> Q [Dec]
+autoapplyDecs getNewName givens funs = do
+  givenInfos <- for givens $ fmap (uncurry Given) . reifyVal "Argument"
+  funInfos   <- for funs $ fmap (uncurry Function) . reifyVal "Function"
+  let mkFun fun = do
+        exp' <- autoapply1 givenInfos fun
+        pure $ FunD (mkName . getNewName . nameBase . fName $ fun)
+                    [Clause [] (NormalB exp') []]
+  traverse mkFun funInfos
+
+-- | A given is something we can try to pass as an argument
 data Given = Given
   { gName :: Name
   , gType :: DType
   }
   deriving (Show)
 
-autoapply :: [Name] -> Name -> Q Exp
-autoapply givens fun = do
-  getterInfos <- for givens $ \n -> dsReify n >>= \case
-    Just (DVarI name ty _) -> pure $ Given name ty
-    _                      -> fail $ "Getter isn't a value " <> show n
-  funInfo <- dsReify fun >>= \case
-    Just (DVarI name ty _) -> pure (Command name ty)
-    _                      -> fail $ "Function isn't a value " <> show fun
-  autoapply1 getterInfos funInfo
+-- | A function we are wrapping
+data Function = Function
+  { fName :: Name
+  , fType :: DType
+  }
+  deriving (Show)
 
-autoapplyDecs :: (String -> String) -> [Name] -> [Name] -> Q [Dec]
-autoapplyDecs getNewName givens funs = do
-  getterInfos <- for givens $ \n -> dsReify n >>= \case
-    Just (DVarI name ty _) -> pure $ Given name ty
-    _                      -> fail $ "Getter isn't a value " <> show n
-  funInfos <- for funs $ \n -> dsReify n >>= \case
-    Just (DVarI name ty _) -> pure (Command name ty)
-    _                      -> fail $ "Function isn't a value " <> show n
-  let mkFun fun = do
-        exp' <- autoapply1 getterInfos fun
-        pure $ FunD (mkName . getNewName . nameBase . cName $ fun)
-                    [Clause [] (NormalB exp') []]
-  traverse mkFun funInfos
-
-autoapply1 :: [Given] -> Command -> Q Exp
-autoapply1 getters fun = do
+autoapply1 :: [Given] -> Function -> Q Exp
+autoapply1 givens fun = do
   -- In this function we:
   --
   -- - Instantiate the command type with new unification variables
@@ -71,11 +73,12 @@ autoapply1 getters fun = do
   --   - If nothing matches we just use an 'Argument'
   -- - Take the first result of all these tries
 
-  let (fmap varBndrName -> cmdVars, _preds, args, ret) = unravel (cType fun)
+  let (fmap varBndrName -> cmdVars, _preds, args, ret) = unravel (fType fun)
       defaultMaybe m = ifte m (pure . Just) (pure Nothing)
-  let liftQ :: Q a -> IntBindingT TypeF (LogicT Q) a
+      liftQ :: Q a -> IntBindingT TypeF (LogicT Q) a
       liftQ = T.lift . T.lift
 
+      -- Use LogicT so we can backtrack on failure
       genProvs :: LogicT Q [ArgProvenance]
       genProvs = evalIntBindingT $ do
         instArgs <- traverse (inst cmdVars . snd <=< liftQ . typeDtoF) args
@@ -94,7 +97,7 @@ autoapply1 getters fun = do
         -- providing the value).
         --
         -- The predicate is there to make sure we only match unifiable monads
-        instGivens <- fmap concat . for getters $ \g@Given {..} -> do
+        instGivens <- fmap concat . for givens $ \g@Given {..} -> do
           -- The Given applied as is
           nonApp <- do
             instTy <- uncurry inst <=< liftQ . typeDtoF $ gType
@@ -139,27 +142,37 @@ autoapply1 getters fun = do
   unless (length argProvenances == length args) $ fail
     "\"Impossible\", incorrect number of argument provenances were found"
 
-  let assignGetter = \case
+  let bindGiven = \case
         BoundPure _ _ -> Nothing
         Bound     n g -> Just $ BindS (VarP n) (VarE (gName g))
         Argument  _ _ -> Nothing
-      bs   = catMaybes (assignGetter <$> argProvenances)
+      bs   = catMaybes (bindGiven <$> argProvenances)
       ret' = applyDExp
-        (DVarE (cName fun))
+        (DVarE (fName fun))
         (argProvenances <&> \case
           Bound     n _           -> DVarE n
           BoundPure _ (Given n _) -> DVarE n
           Argument  n _           -> DVarE n
         )
   exp' <- dsDoStmts (bs <> [NoBindS (sweeten ret')])
-  -- Typing the arguments here is important
+
+  -- Typing the arguments here is important, if we don't then some skolems
+  -- might escape!
+  --
+  -- Consider wrapping @f :: (forall a. a) -> ()@ (and supplying no arguments).
+  -- We end up with the splice @myF x = f x@, and the @a@ in the argument to
+  -- @f@ escapes. We can fix this by typing the pattern explicitly, thusly @myF
+  -- (x :: forall a. a) = f x@
   pure $ LamE [ SigP (VarP n) (sweeten t) | Argument n t <- argProvenances ]
               (sweeten exp')
 
 data ArgProvenance
   = Bound Name Given
+    -- ^ Comes from a monadic binding
   | BoundPure Name Given
-    | Argument Name DType
+    -- ^ Comes from a pure binding, i.e. let ... in
+  | Argument Name DType
+    -- ^ Comes from an argument to the wrapped function
   deriving (Show)
 
 ----------------------------------------------------------------
@@ -174,7 +187,7 @@ data TypeF a
   | LitF TyLit
   deriving (Show, Functor, Foldable, Traversable)
 
--- | TODO: Derive this with generics
+-- TODO: Derive this with generics
 instance Unifiable TypeF where
   zipMatch (AppF l1 r1) (AppF l2 r2) =
     Just (AppF (Right (l1, l2)) (Right (r1, r2)))
@@ -243,6 +256,11 @@ inst ns t = do
 ----------------------------------------------------------------
 -- Utils
 ----------------------------------------------------------------
+
+reifyVal :: String -> Name -> Q (Name, DType)
+reifyVal d n = dsReify n >>= \case
+  Just (DVarI name ty _) -> pure (name, ty)
+  _                      -> fail $ d <> " " <> show n <> " isn't a value"
 
 stripForall :: DType -> ([Name], DType)
 stripForall = raiseForalls >>> \case
