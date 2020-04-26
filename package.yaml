@@ -14,11 +14,11 @@ extra-source-files:
 library:
   source-dirs: src
   dependencies:
-    - base < 5
+    - base >= 4.13 && < 5
     - logict
     - mtl
     - template-haskell
-    - th-desugar
+    - th-desugar >= 1.10
     - transformers
     - unification-fd
 
