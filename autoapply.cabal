@@ -4,7 +4,7 @@ cabal-version: 1.24
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 12f7c729062c0e14c540f5cb22aee1461edb7195af7343e67fe06ebd9d60c56c
+-- hash: d7dc8cc393a7ae3f3bb39e5cc06d56b8f6732fcd95ac8397a3541136adfecb95
 
 name:           autoapply
 version:        0.1.0.0
@@ -21,6 +21,7 @@ build-type:     Custom
 extra-source-files:
     readme.md
     default.nix
+    changelog.md
 
 source-repository head
   type: git

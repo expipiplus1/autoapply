@@ -9,6 +9,7 @@ github: expipiplus1/autoapply
 extra-source-files:
   - readme.md
   - default.nix
+  - changelog.md
 
 library:
   source-dirs: src
