@@ -3,6 +3,23 @@
 A Template-Haskell program to automatically pass arguments to functions
 wherever the type fits.
 
+## TL;DR
+
+You have the following values and want to stir them together and see what
+sticks.
+
+- `foo :: Monad m => A -> B -> C -> m D`
+- `getA :: App A`
+- `myC :: C`
+
+`$(autoApply ['getA, 'myC] 'foo)` will create
+`\b -> getA >>= \a -> foo a b myC` which has type `B -> App D`
+
+or
+
+`autoApplyDecs reverse ['getA, 'myC] ['foo]` will create
+`oof :: B -> App D; oof b = do { a <- getA; foo a b myC }`
+
 ## Why to use it
 
 One nice use-case is to avoiding writing boilerplate wrappers for using an API
