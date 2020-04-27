@@ -3,6 +3,8 @@
 A Template-Haskell program to automatically pass arguments to functions
 wherever the type fits.
 
+@tomjaguarpaw noticed that this is like "Type-directed implicit parameters".
+
 ## TL;DR
 
 You have the following values and want to stir them together and see what
