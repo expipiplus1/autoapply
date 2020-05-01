@@ -9,7 +9,6 @@ import           Control.Monad
 import           Control.Monad.Logic            ( LogicT
                                                 , observeManyT
                                                 )
-import           Control.Monad.Logic.Class      ( ifte )
 import           Control.Monad.Trans           as T
 import           Control.Monad.Trans.Except
 import           Control.Unification
@@ -73,28 +72,31 @@ autoapply1 givens fun = do
   --   - If nothing matches we just use an 'Argument'
   -- - Take the first result of all these tries
 
-  let (fmap varBndrName -> cmdVars, _preds, args, ret) = unravel (fType fun)
-      defaultMaybe m = ifte m (pure . Just) (pure Nothing)
+  let (fmap varBndrName -> cmdVarNames, _preds, args, ret) =
+        unravel (fType fun)
+      defaultMaybe m = (Just <$> m) <|> pure Nothing
       liftQ :: Q a -> IntBindingT TypeF (LogicT Q) a
       liftQ = T.lift . T.lift
+      errorToLogic go = runExceptT go >>= \case
+        Left  (_ :: UFailure TypeF IntVar) -> empty
+        Right x                            -> pure x
 
       -- Use LogicT so we can backtrack on failure
       genProvs :: LogicT Q [ArgProvenance]
       genProvs = evalIntBindingT $ do
-        instArgs <- traverse (inst cmdVars . snd <=< liftQ . typeDtoF) args
+        cmdVars  <- sequence [ (n, ) <$> freeVar | n <- cmdVarNames ]
+        instArgs <- traverse
+          (fmap (instWithVars cmdVars . snd) . liftQ . typeDtoF)
+          args
 
-        -- This is @Just (m, a)@ when m is Applicative
-        retMonad <- case ret of
-          DAppT m a -> liftQ (isInstance ''Applicative [sweeten m]) >>= \case
-            False -> pure Nothing
-            True  -> do
-              m' <- inst cmdVars . snd <=< liftQ . typeDtoF $ m
-              a' <- inst cmdVars . snd <=< liftQ . typeDtoF $ a
-              pure $ Just (m', a')
-          _ -> pure Nothing
+        cmdM       <- UVar <$> freeVar
+        retInst    <- fmap (instWithVars cmdVars . snd) . liftQ . typeDtoF $ ret
 
-        -- A list of (type to unify, predicate to use this match, the given
-        -- providing the value).
+        -- A list of
+        -- ( type to unify
+        -- , predicate to use this match
+        -- , the given providing the value
+        -- )
         --
         -- The predicate is there to make sure we only match unifiable monads
         instGivens <- fmap concat . for givens $ \g@Given {..} -> do
@@ -106,7 +108,7 @@ autoapply1 givens fun = do
           -- The given, but in an applicative context, only possible if we can
           -- unify the monad and there is a Monad instance
           app <- case stripForall gType of
-            (vars, DAppT m a) | Just (cmdM, _) <- retMonad ->
+            (vars, DAppT m a) ->
               liftQ (isInstance ''Applicative [sweeten m]) >>= \case
                 False -> pure Nothing
                 True  -> do
@@ -121,16 +123,28 @@ autoapply1 givens fun = do
           pure ([nonApp] <> toList app)
 
         as <- for instArgs $ \argTy ->
-          defaultMaybe . asum $ instGivens <&> \(givenTy, predicate, g) ->
-            runExceptT
-                (do
-                  predicate
-                  freshGivenTy <- freshen givenTy
-                  unify freshGivenTy argTy
-                )
-              >>= \case
-                    Left  (_ :: UFailure TypeF IntVar) -> empty
-                    Right _                            -> pure g
+          defaultMaybe . asum $ instGivens <&> \(givenTy, predicate, g) -> do
+            _ <- errorToLogic $ do
+              predicate
+              freshGivenTy <- freshen givenTy
+              unify freshGivenTy argTy
+            pure g
+
+        -- If we used any monadic bindings, we must have a Monad instance for
+        -- the return variable. If it's polymorphic then assume an instance.
+        when (any isMonadicBind (catMaybes as)) $ do
+          a         <- UVar <$> freeVar
+          ret'      <- errorToLogic $ unify retInst (UTerm (AppF cmdM a))
+          retFrozen <- freeze <$> errorToLogic (applyBindings ret')
+          case retFrozen of
+            Just (Fix (AppF m _)) -> do
+              let typeD = typeFtoD m
+              liftQ (isInstance ''Applicative [sweeten typeD]) >>= \case
+                False -> empty
+                True  -> pure ()
+            Nothing -> pure ()
+            _       -> empty
+
         for (zip args as) $ \case
           (_, Just p ) -> pure p
           (t, Nothing) -> (`Argument` t) <$> liftQ (newName "a")
@@ -175,6 +189,11 @@ data ArgProvenance
     -- ^ Comes from an argument to the wrapped function
   deriving (Show)
 
+isMonadicBind :: ArgProvenance -> Bool
+isMonadicBind = \case
+  Bound _ _ -> True
+  _         -> False
+
 ----------------------------------------------------------------
 -- Haskell types as a fixed point of TypeF
 ----------------------------------------------------------------
@@ -216,6 +235,14 @@ typeDtoF = traverse go . stripForall
     DLitT l       -> pure . Fix $ LitF l
     DWildCardT    -> fail "TODO: Wildcards"
 
+typeFtoD :: Fix TypeF -> DType
+typeFtoD = unFix >>> \case
+  AppF l r -> DAppT (typeFtoD l) (typeFtoD r)
+  VarF n   -> DVarT n
+  ConF n   -> DConT n
+  ArrowF   -> DArrowT
+  LitF l   -> DLitT l
+
 varBndrName :: DTyVarBndr -> Name
 varBndrName = \case
   DPlainTV n    -> n
@@ -244,6 +271,11 @@ inst
   -> m (UTerm TypeF IntVar)
 inst ns t = do
   vs <- sequence [ (n, ) <$> freeVar | n <- ns ]
+  pure $ instWithVars vs t
+
+-- | Instantiate a type with unification variables
+instWithVars :: [(Name, IntVar)] -> Fix TypeF -> UTerm TypeF IntVar
+instWithVars vs t =
   let go (Fix f) = case f of
         AppF l r                       -> UTerm (AppF (go l) (go r))
         VarF n | Just v <- lookup n vs -> UVar v
@@ -251,7 +283,7 @@ inst ns t = do
         ConF n                         -> UTerm (ConF n)
         ArrowF                         -> UTerm ArrowF
         LitF l                         -> UTerm (LitF l)
-  pure $ go t
+  in  go t
 
 ----------------------------------------------------------------
 -- Utils

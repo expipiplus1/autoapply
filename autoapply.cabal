@@ -4,10 +4,10 @@ cabal-version: 1.24
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7d16c8a0b05df49d6afc85393edc6b82c2482761dbc1c85a66ec61675dba7497
+-- hash: 0ebb847d015afb16b8a577b0a6012c39b43d5c5ac92fd9584450922c1f5d0730
 
 name:           autoapply
-version:        0.1.0.0
+version:        0.2.0.0
 synopsis:       Template Haskell to automatically pass values to functions
 description:    See readme.md
 category:       Template Haskell
@@ -40,7 +40,7 @@ library
       Paths_autoapply
   hs-source-dirs:
       src
-  default-extensions: DeriveFoldable DeriveFunctor DeriveTraversable DerivingStrategies FlexibleContexts KindSignatures LambdaCase PatternSynonyms RankNTypes RecordWildCards ScopedTypeVariables TemplateHaskellQuotes TupleSections TypeFamilies ViewPatterns
+  default-extensions: DeriveFoldable DeriveFunctor DeriveTraversable DerivingStrategies FlexibleContexts KindSignatures LambdaCase PatternSynonyms RankNTypes RecordWildCards ScopedTypeVariables TemplateHaskellQuotes TupleSections TypeApplications TypeFamilies ViewPatterns
   ghc-options: -Wall
   build-depends:
       base >=4.13 && <5
@@ -59,7 +59,7 @@ test-suite doctests
       
   hs-source-dirs:
       test
-  default-extensions: DeriveFoldable DeriveFunctor DeriveTraversable DerivingStrategies FlexibleContexts KindSignatures LambdaCase PatternSynonyms RankNTypes RecordWildCards ScopedTypeVariables TemplateHaskellQuotes TupleSections TypeFamilies ViewPatterns
+  default-extensions: DeriveFoldable DeriveFunctor DeriveTraversable DerivingStrategies FlexibleContexts KindSignatures LambdaCase PatternSynonyms RankNTypes RecordWildCards ScopedTypeVariables TemplateHaskellQuotes TupleSections TypeApplications TypeFamilies ViewPatterns
   ghc-options: -Wall
   build-depends:
       base

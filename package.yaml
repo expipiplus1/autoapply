@@ -1,5 +1,5 @@
 name: autoapply
-version: 0.1.0.0
+version: 0.2.0.0
 synopsis: Template Haskell to automatically pass values to functions
 description: See readme.md
 category: Template Haskell
@@ -55,5 +55,6 @@ default-extensions:
   - ScopedTypeVariables
   - TemplateHaskellQuotes
   - TupleSections
+  - TypeApplications
   - TypeFamilies
   - ViewPatterns

@@ -60,6 +60,25 @@ aQux = undefined
 -- Tests
 ----------------------------------------------------------------
 
+-- basic test
+autoapplyDecs (<> "'") [] ['id]
+
+-- | Simple monadic binding
+--
+-- >>> x = $(autoapply ['getQuxIO] 'test0)
+-- >>> :t x
+-- x :: Baz -> IO ()
+test0 :: Baz -> Qux -> m ()
+test0 = undefined
+
+-- | Simple polymorphic monadic binding
+--
+-- >>> x = $(autoapply ['getQux] 'test0')
+-- >>> :t x
+-- x :: Monad m => Baz -> m ()
+test0' :: Baz -> Qux -> m ()
+test0' = undefined
+
 -- | Two monadic bindings
 --
 -- >>> x = $(autoapply ['getBazSem, 'getQux] 'test1)
@@ -131,8 +150,17 @@ test8 = const (const ())
 -- >>> x = $(autoapply ['reverse] 'test9)
 -- >>> :t x
 -- x :: [a] -> [a]
+--
+-- Applied in argument order (This example is in the reader monad)
+--
+-- >>> x = $(autoapply ['reverse] 'test9')
+-- >>> :t x
+-- x :: ([a] -> [a] -> b) -> [a] -> b
 test9 :: ([a] -> b) -> [a] -> b
-test9 = test9
+test9 = undefined
+
+test9' :: [a] -> ([a] -> b) -> b
+test9' = undefined
 
 -- | Two monadic bindings with types incompatible with one another
 --
@@ -179,6 +207,66 @@ test12 = undefined
 -- x :: IO Baz
 test13 :: Monad m => Qux -> m Baz
 test13 = undefined
+
+-- | Invents a monad
+--
+-- >>> x = $(autoapply ['getQuxIO] 'test14)
+-- >>> :t x
+-- x :: IO b
+test14 :: Qux -> b
+test14 = undefined
+
+-- | Unifies variable with monad
+--
+-- >>> x = $(autoapply ['getQuxIO] 'test15)
+-- >>> :t x
+-- x :: IO b
+test15 :: Qux -> a b
+test15 = undefined
+
+-- | Invents monad return var
+--
+-- >>> x = $(autoapply ['ioUnit] 'test16)
+-- >>> :t x
+-- x :: IO ()
+test16 :: (a -> b) -> b
+test16 = undefined
+ioUnit :: a -> IO ()
+ioUnit = const (pure ())
+
+-- | Uses invented var, i.e. if we unify @b@ with @IO ()@ then we can try to
+-- use monad parameters.
+--
+-- >>> x = $(autoapply ['ioUnit, 'getQuxIO] 'test17)
+-- >>> :t x
+-- x :: IO ()
+test17 :: (a -> b) -> Qux -> b
+test17 = undefined
+
+-- | Unifies @a -> b@ with 'pure'
+--
+-- >>> x = $(autoapply ['pure] 'test18)
+-- >>> :t x
+-- x :: Applicative f => f a
+test18 :: (a -> b) -> b
+test18 = undefined
+
+-- | Uses invented with polymorphic return type, i.e. if we unify @b@ with @m
+-- a@ then we can try to use monad parameters.
+--
+-- >>> x = $(autoapply ['pure, 'getQuxIO] 'test19)
+-- >>> :t x
+-- x :: IO b
+test19 :: (a -> b) -> Qux -> b
+test19 = undefined
+
+-- | Changes type of argument to match return type
+--
+-- >>> x = $(autoapply ['getQuxIO] 'test20)
+-- >>> :t x
+-- x :: (a -> IO b) -> IO b
+test20 :: (a -> b) -> Qux -> b
+test20 = undefined
 
 -- |
 --
