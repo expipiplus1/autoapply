@@ -1,3 +1,4 @@
+{-# language CPP #-}
 module AutoApply
   ( autoapply
   , autoapplyDecs
@@ -6,6 +7,12 @@ module AutoApply
 import           Control.Applicative
 import           Control.Arrow                  ( (>>>) )
 import           Control.Monad
+#if !MIN_VERSION_base(4,11,0)
+-- Control.Monad.Fail import is redundant since GHC 8.8.1
+import           Control.Monad.Fail             ( MonadFail
+                                                , fail
+                                                )
+#endif
 import           Control.Monad.Logic            ( LogicT
                                                 , observeManyT
                                                 )
