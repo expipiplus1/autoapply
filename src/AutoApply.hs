@@ -81,6 +81,12 @@ autoapply1 givens fun = do
     errorToLogic go = runExceptT go >>= \case
       Left  (_ :: UFailure TypeF IntVar) -> empty
       Right x                            -> pure x
+    -- Quant will invent new variable names for any unification variables
+    -- still free
+    quant t = do
+      vs <- getFreeVars t
+      for_ vs $ \v -> bindVar v . (UTerm . VarF) =<< liftQ (newName "a")
+
 
     -- Use LogicT so we can backtrack on failure
     genProvs :: LogicT Q [ArgProvenance]
@@ -134,8 +140,9 @@ autoapply1 givens fun = do
       -- If we used any monadic bindings, we must have a Monad instance for
       -- the return variable. If it's polymorphic then assume an instance.
       when (any isMonadicBind (catMaybes as)) $ do
-        a         <- UVar <$> freeVar
-        ret'      <- errorToLogic $ unify retInst (UTerm (AppF cmdM a))
+        a    <- UVar <$> freeVar
+        ret' <- errorToLogic $ unify retInst (UTerm (AppF cmdM a))
+        quant ret'
         retFrozen <- freeze <$> errorToLogic (applyBindings ret')
         case retFrozen of
           Just (Fix (AppF m _)) -> do
@@ -143,19 +150,17 @@ autoapply1 givens fun = do
             liftQ (isInstance ''Applicative [sweeten typeD]) >>= \case
               False -> empty
               True  -> pure ()
-          Nothing -> pure ()
-          _       -> empty
+          Nothing ->
+            liftQ
+              $ fail
+                  "\"impossible\", return type didn't freeze while checking monadic bindings"
+          _ -> empty
 
       -- Guard on all the instances being satisfiable
       --
       -- This must come after the Monadic binding checker so that the (possibly
       -- new) return type has been constrained a little.
       for_ preds $ \pred -> do
-        -- Quant will invent new variable names for any unification variables
-        -- still free
-        let quant t = do
-              vs <- getFreeVars t
-              for_ vs $ \v -> bindVar v . (UTerm . VarF) =<< liftQ (newName "a")
 
         -- Get the constraint with the correct unification variables
         instPred <- fmap (instWithVars cmdVars . snd) . liftQ . typeDtoF $ pred
@@ -176,7 +181,10 @@ autoapply1 givens fun = do
             liftQ (isInstance className (sweeten <$> typeArgs)) >>= \case
               False -> empty
               True  -> pure ()
-          Nothing -> liftQ $ fail "predicate didn't freeze"
+          Nothing ->
+            liftQ
+              $ fail
+                  "\"impossible\": predicate didn't freeze while checking predicates"
 
 
       for (zip args as) $ \case
