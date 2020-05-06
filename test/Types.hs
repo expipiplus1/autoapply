@@ -40,6 +40,9 @@ class Monad m => MyConstraint (m :: Type -> Type) where
 newtype MyMonadT a b = MyMonadT (a b)
   deriving newtype (Functor, Applicative, Monad)
 
+instance MonadIO m => MonadIO (MyMonadT m) where
+  liftIO = undefined
+
 getBazSem :: MyConstraint m => MyMonadT m Baz
 getBazSem = undefined
 
@@ -295,10 +298,30 @@ test21 = undefined
 -- >>> :t x
 -- x :: Num a => a -> a -> a
 
+-- | Respects basic constraints 2
+--
+-- >>> x = $(autoapply ['getBazSem] 'test22)
+-- >>> :t x
+-- x :: (MyConstraint m, MyClass a, MonadIO m) => a -> MyMonadT m ()
+class MyClass (a :: Type) where
+instance MyClass Int where
+test22 :: (MyClass a, MonadIO m) => Baz -> a -> m ()
+test22 = undefined
+
+-- | Fails with uninhabited classes
+--
+-- >>> x = $(autoapply [] 'test23)
+-- <BLANKLINE>
+-- <interactive>:355:7: error:
+--     • "Impossible" Finding argument provenances failed (unless the function context containts a class with no instances)
+--     • In the untyped splice: $(autoapply [] 'test23)
+class MyClassWithNoInstances (a :: Type) where
+test23 :: (MyClassWithNoInstances a) => a -> b
+test23 = undefined
+
 ----------------------------------------------------------------
 -- Examples from readme
 ----------------------------------------------------------------
-
 
 class Member a (r :: [Type]) where
 data Sem (r :: [Type]) a

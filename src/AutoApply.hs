@@ -198,7 +198,7 @@ autoapply1 givens fun = do
         (t, Nothing) -> (`Argument` t) <$> liftQ (newName "a")
 
   argProvenances <-
-    note "\"Impossible\" Finding argument provenances failed"
+    note "\"Impossible\" Finding argument provenances failed (unless the function context containts a class with no instances)"
     .   listToMaybe
     =<< observeManyT 1 genProvs
   unless (length argProvenances == length args) $ fail
