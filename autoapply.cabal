@@ -4,7 +4,7 @@ cabal-version: 1.24
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e22e4b1852133c55a3ee5c1511abe1d010dad6028b53b46b2d8e56a70d25e5b7
+-- hash: c1002624e1d654c87061c0c902266ec0088da41c9cf20f446b3a03407bddf228
 
 name:           autoapply
 version:        0.3
@@ -47,7 +47,7 @@ library
     , logict
     , mtl
     , template-haskell
-    , th-desugar >=1.10 && <1.11
+    , th-desugar >=1.11 && <1.12
     , transformers
     , unification-fd
   default-language: Haskell2010

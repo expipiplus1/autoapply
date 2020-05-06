@@ -264,8 +264,9 @@ typeDtoF :: MonadFail m => DType -> m ([Name], Fix TypeF)
 typeDtoF = traverse go . stripForall
  where
   go = \case
-    DForallT{} -> fail "TODO: Higher ranked types"
-    DAppT l r  -> do
+    DForallT{}      -> fail "TODO: Higher ranked types"
+    DConstrainedT{} -> fail "TODO: Higher ranked types"
+    DAppT l r       -> do
       l' <- go l
       r' <- go r
       pure $ Fix (AppF l' r')
@@ -294,11 +295,13 @@ varBndrName = \case
 --
 -- For example @forall a. a -> forall b. b@ becomes @forall a b. a -> b@
 raiseForalls :: DType -> DType
-raiseForalls = uncurry3 DForallT . go
+raiseForalls = go >>> \case
+  (vs, ctx, t) -> DForallT ForallVis vs . DConstrainedT ctx $ t
  where
   go = \case
-    DForallT vs ctx t ->
-      let (vs', ctx', t') = go t in (vs <> vs', ctx <> ctx', t')
+    DForallT _ vs t -> let (vs', ctx', t') = go t in (vs <> vs', ctx', t')
+    DConstrainedT ctx t ->
+      let (vs', ctx', t') = go t in (vs', ctx <> ctx', t')
     l :~> r -> let (vs, ctx, r') = go r in (vs, ctx, l :~> r')
     t       -> ([], [], t)
 
@@ -338,11 +341,20 @@ reifyVal d n = dsReify n >>= \case
 
 stripForall :: DType -> ([Name], DType)
 stripForall = raiseForalls >>> \case
-  DForallT vs _ ty -> (varBndrName <$> vs, ty)
-  ty               -> ([], ty)
+  DForallT _ vs (DConstrainedT _ ty) -> (varBndrName <$> vs, ty)
+  DForallT _ vs ty   -> (varBndrName <$> vs, ty)
+  DConstrainedT _ ty -> ([], ty)
+  ty                 -> ([], ty)
 
-uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
-uncurry3 f (a, b, c) = f a b c
+unravel :: DType -> ([DTyVarBndr], [DPred], [DType], DType)
+unravel t =
+  let (argList, ret) = unravelDType t
+      go             = \case
+        DFANil             -> ([], [], [])
+        DFAForalls _ vs as -> (vs, [], []) <> go as
+        DFACxt  preds as   -> ([], preds, []) <> go as
+        DFAAnon a     as   -> ([], [], [a]) <> go as
+  in  let (vs, preds, args) = go argList in (vs, preds, args, ret)
 
 note :: MonadFail m => String -> Maybe a -> m a
 note s = maybe (fail s) pure
