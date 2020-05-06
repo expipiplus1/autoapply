@@ -14,7 +14,12 @@ let
     pkgs.haskell.packages.${compiler'}.override {
       overrides = self: super:
         {
-          th-desugar = self.callHackage "th-desugar" "1.11" { };
+          th-desugar = self.callCabal2nix "" (pkgs.fetchFromGitHub {
+            owner = "goldfirere";
+            repo = "th-desugar";
+            rev = "f075206882ce4e554c37537e624b4be7409d74a3";
+            sha256 = "0747xggx2q8yphag2wv06dj0pgi9zvadi069c2d6lckg26chhnlk";
+          }) { };
         } // pkgs.lib.optionalAttrs hoogle {
           ghc = super.ghc // { withPackages = super.ghc.withHoogle; };
           ghcWithPackages = self.ghc.withPackages;

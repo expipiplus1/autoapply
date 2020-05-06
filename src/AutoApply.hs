@@ -1,4 +1,3 @@
-{-# language CPP #-}
 module AutoApply
   ( autoapply
   , autoapplyDecs
@@ -7,11 +6,6 @@ module AutoApply
 import           Control.Applicative
 import           Control.Arrow                  ( (>>>) )
 import           Control.Monad
-#if __GLASGOW_HASKELL__ < 808
--- Control.Monad.Fail import is redundant since GHC 8.8.1
-import           Control.Monad.Fail             ( MonadFail
-                                                )
-#endif
 import           Control.Monad.Logic            ( LogicT
                                                 , observeManyT
                                                 )
@@ -29,36 +23,70 @@ import           Language.Haskell.TH
 import           Language.Haskell.TH.Desugar
 import           Prelude                 hiding ( pred )
 
--- | @autoapply args fun@ creates an expression which is equal to @fun@ applied
--- to as many of the values in @args@ as possible.
-autoapply :: [Name] -> Name -> Q Exp
-autoapply givens fun = do
-  givenInfos <- for givens $ fmap (uncurry Given) . reifyVal "Argument"
-  funInfo    <- uncurry Function <$> reifyVal "Function" fun
-  autoapply1 givenInfos funInfo
+-- | @autoapply argsSubsuming argsUnifying fun@ creates an expression which is
+-- equal to @fun@ applied to as many of the values in @argsSubsuming@ and
+-- @argsUnifying@ as possible.
+--
+-- The types of first list of args must subsume the type of the argument
+-- they're passed to. The types of the second list must merely unify.
+autoapply
+  :: [Name]
+  -- ^ Values which will be used if their type subsumes the argument type
+  -> [Name]
+  -- ^ Values which will be used if their type unifies with the argument type
+  -> Name
+  -- ^ A function to apply to some values
+  -> Q Exp
+autoapply subsuming unifying fun = do
+  unifyingInfos <- for unifying $ fmap (uncurry (Given Unifying)) . reifyVal
+    "Argument"
+  subsumingInfos <- for subsuming $ fmap (uncurry (Given Subsuming)) . reifyVal
+    "Argument"
+  funInfo <- uncurry Function <$> reifyVal "Function" fun
+  autoapply1 (unifyingInfos <> subsumingInfos) funInfo
 
--- | @autoapplyDecs mkName args funs@ will wrap every function in @funs@ by
--- applying it to as many of the values in @args@ as possible. The new function
--- name will be @mkName@ applied to the wrapped function name.
+-- | @autoapplyDecs mkName argsSubsuming argsUnifying funs@ will wrap every
+-- function in @funs@ by applying it to as many of the values in
+-- @argsSubsuming@ and @argsUnifying@ as possible. The new function name will
+-- be @mkName@ applied to the wrapped function name.
+--
+-- The types of first list of args must subsume the type of the argument
+-- they're passed to. The types of the second list must merely unify.
 --
 -- Type signatures are not generated, so you may want to add these yourself or
 -- turn on @NoMonomorphismRestriction@ if you have polymorphic constraints.
-autoapplyDecs :: (String -> String) -> [Name] -> [Name] -> Q [Dec]
-autoapplyDecs getNewName givens funs = do
-  givenInfos <- for givens $ fmap (uncurry Given) . reifyVal "Argument"
-  funInfos   <- for funs $ fmap (uncurry Function) . reifyVal "Function"
+autoapplyDecs
+  :: (String -> String)
+  -- ^ A function to generate a new name for the wrapping function
+  -> [Name]
+  -- ^ A list of values which will be passed to any arguments their type subsumes
+  -> [Name]
+  -- ^ A list of values which will be passed to any arguments their type unify with
+  -> [Name]
+  -- ^ A list of function to wrap with the above parameters
+  -> Q [Dec]
+autoapplyDecs getNewName subsuming unifying funs = do
+  unifyingInfos <- for unifying $ fmap (uncurry (Given Unifying)) . reifyVal
+    "Argument"
+  subsumingInfos <- for subsuming $ fmap (uncurry (Given Subsuming)) . reifyVal
+    "Argument"
+  funInfos <- for funs $ fmap (uncurry Function) . reifyVal "Function"
   let mkFun fun = do
-        exp' <- autoapply1 givenInfos fun
+        exp' <- autoapply1 (unifyingInfos <> subsumingInfos) fun
         pure $ FunD (mkName . getNewName . nameBase . fName $ fun)
                     [Clause [] (NormalB exp') []]
   traverse mkFun funInfos
 
 -- | A given is something we can try to pass as an argument
 data Given = Given
-  { gName :: Name
-  , gType :: DType
+  { gUnificationType :: UnificationType
+  , gName            :: Name
+  , gType            :: DType
   }
-  deriving (Show)
+  deriving Show
+
+data UnificationType = Unifying | Subsuming
+  deriving Show
 
 -- | A function we are wrapping
 data Function = Function
@@ -73,7 +101,7 @@ autoapply1 givens fun = do
   --
   -- - Instantiate the command type with new unification variables
   -- - Split it into arguments and return type
-  -- - Try to unify it with every 'Given' at every argument
+  -- - Try to unify or subsume it with every 'Given' at every argument
   --   - If we can unify the monad of the 'Given' with that of the functions and
   --     unify the argument type, use that.
   --   - If nothing matches we just use an 'Argument'
@@ -137,10 +165,18 @@ autoapply1 givens fun = do
 
       as <- for instArgs $ \argTy ->
         defaultMaybe . asum $ instGivens <&> \(givenTy, predicate, g) -> do
-          _ <- errorToLogic $ do
+          errorToLogic $ do
             predicate
             freshGivenTy <- freshen givenTy
-            unify freshGivenTy argTy
+            let u = case g of
+                  Bound     _ Given {..} -> gUnificationType
+                  BoundPure _ Given {..} -> gUnificationType
+                  Argument  _ _          -> Unifying
+            case u of
+              Unifying  -> void $ unify freshGivenTy argTy
+              Subsuming -> do
+                s <- subsumes freshGivenTy argTy
+                lift $ guard s
           pure g
 
       -- If we used any monadic bindings, we must have a Monad instance for
@@ -184,9 +220,16 @@ autoapply1 givens fun = do
             className <- case class' of
               DConT n -> pure n
               _ -> liftQ $ fail "unfolded predicate didn't begin with a ConT"
-            liftQ (isInstance className (sweeten <$> typeArgs)) >>= \case
-              False -> empty
-              True  -> pure ()
+
+            -- Ignore when the name is a type family because of
+            -- https://gitlab.haskell.org/ghc/ghc/issues/18153
+            liftQ (reifyWithWarning className) >>= \case
+              ClassI _ _ ->
+                liftQ (isInstance className (sweeten <$> typeArgs)) >>= \case
+                  False -> empty
+                  True  -> pure ()
+              FamilyI _ _ -> pure ()
+              _ -> liftQ $ fail "Predicate name isn't a class or a type family"
           Nothing ->
             liftQ
               $ fail
@@ -198,7 +241,8 @@ autoapply1 givens fun = do
         (t, Nothing) -> (`Argument` t) <$> liftQ (newName "a")
 
   argProvenances <-
-    note "\"Impossible\" Finding argument provenances failed"
+    note
+      "\"Impossible\" Finding argument provenances failed (unless the function context containts a class with no instances)"
     .   listToMaybe
     =<< observeManyT 1 genProvs
   unless (length argProvenances == length args) $ fail
@@ -212,9 +256,9 @@ autoapply1 givens fun = do
       ret' = applyDExp
         (DVarE (fName fun))
         (argProvenances <&> \case
-          Bound     n _           -> DVarE n
-          BoundPure _ (Given n _) -> DVarE n
-          Argument  n _           -> DVarE n
+          Bound     n _             -> DVarE n
+          BoundPure _ (Given _ n _) -> DVarE n
+          Argument  n _             -> DVarE n
         )
   exp' <- dsDoStmts (bs <> [NoBindS (sweeten ret')])
 

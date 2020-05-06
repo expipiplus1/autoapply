@@ -4,10 +4,10 @@ cabal-version: 1.24
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7dfbb655fdf55d5ab82b9457125299eaba2c2a4b318c4713df711e9c1ce23937
+-- hash: cd7920009bd3d4a71ca708e58f17f923dc3b5477ef30d0a7ddf6c30155ce9d13
 
 name:           autoapply
-version:        0.3
+version:        0.4
 synopsis:       Template Haskell to automatically pass values to functions
 description:    See readme.md
 category:       Template Haskell
@@ -43,7 +43,7 @@ library
   default-extensions: DeriveFoldable DeriveFunctor DeriveTraversable DerivingStrategies FlexibleContexts KindSignatures LambdaCase PatternSynonyms RankNTypes RecordWildCards ScopedTypeVariables TemplateHaskellQuotes TupleSections TypeApplications TypeFamilies ViewPatterns
   ghc-options: -Wall
   build-depends:
-      base >=4.9 && <5
+      base >=4.12 && <5
     , logict
     , mtl
     , template-haskell
