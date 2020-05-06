@@ -23,8 +23,9 @@ import           Language.Haskell.TH
 import           Language.Haskell.TH.Desugar
 import           Prelude                 hiding ( pred )
 
--- | @autoapply args fun@ creates an expression which is equal to @fun@ applied
--- to as many of the values in @args@ as possible.
+-- | @autoapply argsSubsuming argsUnifying fun@ creates an expression which is
+-- equal to @fun@ applied to as many of the values in @argsSubsuming@ and
+-- @argsUnifying@ as possible.
 --
 -- The types of first list of args must subsume the type of the argument
 -- they're passed to. The types of the second list must merely unify.
@@ -48,6 +49,9 @@ autoapply subsuming unifying fun = do
 -- function in @funs@ by applying it to as many of the values in
 -- @argsSubsuming@ and @argsUnifying@ as possible. The new function name will
 -- be @mkName@ applied to the wrapped function name.
+--
+-- The types of first list of args must subsume the type of the argument
+-- they're passed to. The types of the second list must merely unify.
 --
 -- Type signatures are not generated, so you may want to add these yourself or
 -- turn on @NoMonomorphismRestriction@ if you have polymorphic constraints.
