@@ -14,12 +14,12 @@ sticks.
 - `getA :: App A`
 - `myC :: C`
 
-`$(autoApply ['getA, 'myC] 'foo)` will create
+`$(autoApply [] ['getA, 'myC] 'foo)` will create
 `\b -> getA >>= \a -> foo a b myC` which has type `B -> App D`
 
 or
 
-`autoApplyDecs reverse ['getA, 'myC] ['foo]` will create
+`autoApplyDecs reverse [] ['getA, 'myC] ['foo]` will create
 `oof :: B -> App D; oof b = do { a <- getA; foo a b myC }`
 
 ## Why to use it
@@ -53,7 +53,10 @@ You then create the wrapped API thusly:
 ```haskell
 autoapplyDecs
   (<> "'") -- Function to transform the names of the wrapped functions
-  ['myExtraOpenInfo, 'getInstance, 'getFoo] -- Potential arguments to pass
+  ['myExtraOpenInfo, 'getInstance, 'getFoo]
+    -- Potential arguments to pass which must subsume the argument type of the
+    -- function.
+  [] -- Potential arguments to pass which must unify with the argument type
   ['openHandle, 'closeHandle, 'useHandle] -- Functions to wrap
 ```
 
@@ -82,7 +85,10 @@ To see the generated code (it's exactly what you'd expect) compile
 To generate a new top-level declaration you'll need:
 
 - The `Name` of a function to apply to some arguments.
-- The `Name`s of some values to try and pass as arguments.
+- The `Name`s of some values to try and pass as arguments
+  - values whose type must subsume the argument type (if you're unsure, you
+    probably want this one)
+  - values whose type must merely unify with the argument type
 - A way of generating a name for this declaration given the wrapped name
   `:: String -> String`.
 
@@ -94,14 +100,14 @@ Arguments can be used in two ways:
 - As regular parameters
   - If the type of the argument matches directly
   - An example is applying `takeWhile` to `not`; `not` is passed as the `a -> Bool`
-    argument to `takeWhile`. `$(autoapply ['not] 'takeWhile) :: [Bool] -> [Bool]`
+    argument to `takeWhile`. `$(autoapply [] ['not] 'takeWhile) :: [Bool] -> [Bool]`
 
 - Using a monadic bind
   - If the wrapped function returns a value of type `m a` and there exists an instance `Monad m`
   - If the argument is of type `n a` and there exists an instance `Monad m`
   - If `m` unifies with `n`
   - An example is applying `putStrLn` to `getLine`. The `String` result of `getLine` is passed to `putStrLn`
-    `$(autoapply ['getLine] 'putStrLn) :: IO ()`
+    `$(autoapply [] ['getLine] 'putStrLn) :: IO ()`
 
 It's important to note that `Monad` instance checking only goes as far as
 `template-haskell`'s `reifyInstances`. i.e. only the instance heads are
@@ -121,10 +127,10 @@ arguments have polymorphic constraints.
 ## Where to use it
 
 - In an expression context:
-  - `$(autoApply ['my, 'arguments] 'myFunction)`
+  - `$(autoApply ['my, 'arguments] [] 'myFunction)`
 
 - At the top level to generate several declarations
-  - `$(autoApplyDecs (funNameToNewFunName :: String -> String) ['my, 'arguments] ['myFunction, 'anotherFunction])`
+  - `$(autoApplyDecs (funNameToNewFunName :: String -> String) ['my] ['arguments] ['myFunction, 'anotherFunction])`
 
 ## See also
 

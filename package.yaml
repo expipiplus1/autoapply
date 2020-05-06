@@ -1,5 +1,5 @@
 name: autoapply
-version: 0.3
+version: 0.4
 synopsis: Template Haskell to automatically pass values to functions
 description: See readme.md
 category: Template Haskell

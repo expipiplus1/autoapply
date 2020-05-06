@@ -2,6 +2,10 @@
 
 ## WIP
 
+## [0.4] - 2020-05-06
+  - Allow specifying if the types of potential arguments should subsume or just
+    unify with the function's argument types
+
 ## [0.3] - 2020-05-06
   - Check constraints on functions
 
