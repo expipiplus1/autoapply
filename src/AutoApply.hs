@@ -21,6 +21,7 @@ import           Data.Maybe
 import           Data.Traversable
 import           Language.Haskell.TH
 import           Language.Haskell.TH.Desugar
+import           Prelude                 hiding ( pred )
 
 -- | @autoapply args fun@ creates an expression which is equal to @fun@ applied
 -- to as many of the values in @args@ as possible.
@@ -72,82 +73,115 @@ autoapply1 givens fun = do
   --   - If nothing matches we just use an 'Argument'
   -- - Take the first result of all these tries
 
-  let (fmap varBndrName -> cmdVarNames, _preds, args, ret) =
-        unravel (fType fun)
-      defaultMaybe m = (Just <$> m) <|> pure Nothing
-      liftQ :: Q a -> IntBindingT TypeF (LogicT Q) a
-      liftQ = T.lift . T.lift
-      errorToLogic go = runExceptT go >>= \case
-        Left  (_ :: UFailure TypeF IntVar) -> empty
-        Right x                            -> pure x
+  let
+    (fmap varBndrName -> cmdVarNames, preds, args, ret) = unravel (fType fun)
+    defaultMaybe m = (Just <$> m) <|> pure Nothing
+    liftQ :: Q a -> IntBindingT TypeF (LogicT Q) a
+    liftQ = T.lift . T.lift
+    errorToLogic go = runExceptT go >>= \case
+      Left  (_ :: UFailure TypeF IntVar) -> empty
+      Right x                            -> pure x
 
-      -- Use LogicT so we can backtrack on failure
-      genProvs :: LogicT Q [ArgProvenance]
-      genProvs = evalIntBindingT $ do
-        cmdVars  <- sequence [ (n, ) <$> freeVar | n <- cmdVarNames ]
-        instArgs <- traverse
-          (fmap (instWithVars cmdVars . snd) . liftQ . typeDtoF)
-          args
+    -- Use LogicT so we can backtrack on failure
+    genProvs :: LogicT Q [ArgProvenance]
+    genProvs = evalIntBindingT $ do
+      cmdVars  <- sequence [ (n, ) <$> freeVar | n <- cmdVarNames ]
+      instArgs <- traverse
+        (fmap (instWithVars cmdVars . snd) . liftQ . typeDtoF)
+        args
 
-        cmdM       <- UVar <$> freeVar
-        retInst    <- fmap (instWithVars cmdVars . snd) . liftQ . typeDtoF $ ret
+      cmdM       <- UVar <$> freeVar
+      retInst    <- fmap (instWithVars cmdVars . snd) . liftQ . typeDtoF $ ret
 
-        -- A list of
-        -- ( type to unify
-        -- , predicate to use this match
-        -- , the given providing the value
-        -- )
-        --
-        -- The predicate is there to make sure we only match unifiable monads
-        instGivens <- fmap concat . for givens $ \g@Given {..} -> do
-          -- The Given applied as is
-          nonApp <- do
-            instTy <- uncurry inst <=< liftQ . typeDtoF $ gType
-            v      <- liftQ $ newName "g"
-            pure (instTy, pure (), BoundPure v g)
-          -- The given, but in an applicative context, only possible if we can
-          -- unify the monad and there is a Monad instance
-          app <- case stripForall gType of
-            (vars, DAppT m a) ->
-              liftQ (isInstance ''Applicative [sweeten m]) >>= \case
-                False -> pure Nothing
-                True  -> do
-                  m' <- inst vars . snd <=< liftQ . typeDtoF $ m
-                  a' <- inst vars . snd <=< liftQ . typeDtoF $ a
-                  v  <- liftQ $ newName "g"
-                  let predicate = do
-                        _ <- unify m' cmdM
-                        pure ()
-                  pure $ Just (a', predicate, Bound v g)
-            _ -> pure Nothing
-          pure ([nonApp] <> toList app)
+      -- A list of
+      -- ( type to unify
+      -- , predicate to use this match
+      -- , the given providing the value
+      -- )
+      --
+      -- The predicate is there to make sure we only match unifiable monads
+      instGivens <- fmap concat . for givens $ \g@Given {..} -> do
+        -- The Given applied as is
+        nonApp <- do
+          instTy <- uncurry inst <=< liftQ . typeDtoF $ gType
+          v      <- liftQ $ newName "g"
+          pure (instTy, pure (), BoundPure v g)
+        -- The given, but in an applicative context, only possible if we can
+        -- unify the monad and there is a Monad instance
+        app <- case stripForall gType of
+          (vars, DAppT m a) ->
+            liftQ (isInstance ''Applicative [sweeten m]) >>= \case
+              False -> pure Nothing
+              True  -> do
+                m' <- inst vars . snd <=< liftQ . typeDtoF $ m
+                a' <- inst vars . snd <=< liftQ . typeDtoF $ a
+                v  <- liftQ $ newName "g"
+                let predicate = do
+                      _ <- unify m' cmdM
+                      pure ()
+                pure $ Just (a', predicate, Bound v g)
+          _ -> pure Nothing
+        pure ([nonApp] <> toList app)
 
-        as <- for instArgs $ \argTy ->
-          defaultMaybe . asum $ instGivens <&> \(givenTy, predicate, g) -> do
-            _ <- errorToLogic $ do
-              predicate
-              freshGivenTy <- freshen givenTy
-              unify freshGivenTy argTy
-            pure g
+      as <- for instArgs $ \argTy ->
+        defaultMaybe . asum $ instGivens <&> \(givenTy, predicate, g) -> do
+          _ <- errorToLogic $ do
+            predicate
+            freshGivenTy <- freshen givenTy
+            unify freshGivenTy argTy
+          pure g
 
-        -- If we used any monadic bindings, we must have a Monad instance for
-        -- the return variable. If it's polymorphic then assume an instance.
-        when (any isMonadicBind (catMaybes as)) $ do
-          a         <- UVar <$> freeVar
-          ret'      <- errorToLogic $ unify retInst (UTerm (AppF cmdM a))
-          retFrozen <- freeze <$> errorToLogic (applyBindings ret')
-          case retFrozen of
-            Just (Fix (AppF m _)) -> do
-              let typeD = typeFtoD m
-              liftQ (isInstance ''Applicative [sweeten typeD]) >>= \case
-                False -> empty
-                True  -> pure ()
-            Nothing -> pure ()
-            _       -> empty
+      -- If we used any monadic bindings, we must have a Monad instance for
+      -- the return variable. If it's polymorphic then assume an instance.
+      when (any isMonadicBind (catMaybes as)) $ do
+        a         <- UVar <$> freeVar
+        ret'      <- errorToLogic $ unify retInst (UTerm (AppF cmdM a))
+        retFrozen <- freeze <$> errorToLogic (applyBindings ret')
+        case retFrozen of
+          Just (Fix (AppF m _)) -> do
+            let typeD = typeFtoD m
+            liftQ (isInstance ''Applicative [sweeten typeD]) >>= \case
+              False -> empty
+              True  -> pure ()
+          Nothing -> pure ()
+          _       -> empty
 
-        for (zip args as) $ \case
-          (_, Just p ) -> pure p
-          (t, Nothing) -> (`Argument` t) <$> liftQ (newName "a")
+      -- Guard on all the instances being satisfiable
+      --
+      -- This must come after the Monadic binding checker so that the (possibly
+      -- new) return type has been constrained a little.
+      for_ preds $ \pred -> do
+        -- Quant will invent new variable names for any unification variables
+        -- still free
+        let quant t = do
+              vs <- getFreeVars t
+              for_ vs $ \v -> bindVar v . (UTerm . VarF) =<< liftQ (newName "a")
+
+        -- Get the constraint with the correct unification variables
+        instPred <- fmap (instWithVars cmdVars . snd) . liftQ . typeDtoF $ pred
+
+        -- Quantify over any still free
+        quant instPred
+
+        -- Freeze it
+        instFrozen <- freeze <$> errorToLogic (applyBindings instPred)
+
+        case instFrozen of
+          Just f -> do
+            let (class', predArgs) = unfoldDType (typeFtoD f)
+                typeArgs           = [ a | DTANormal a <- predArgs ]
+            className <- case class' of
+              DConT n -> pure n
+              _ -> liftQ $ fail "unfolded predicate didn't begin with a ConT"
+            liftQ (isInstance className (sweeten <$> typeArgs)) >>= \case
+              False -> empty
+              True  -> pure ()
+          Nothing -> liftQ $ fail "predicate didn't freeze"
+
+
+      for (zip args as) $ \case
+        (_, Just p ) -> pure p
+        (t, Nothing) -> (`Argument` t) <$> liftQ (newName "a")
 
   argProvenances <-
     note "\"Impossible\" Finding argument provenances failed"
