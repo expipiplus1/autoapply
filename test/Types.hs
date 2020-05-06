@@ -336,6 +336,28 @@ getInt = 0
 test24 :: MyClass2 a => Int -> a -> ()
 test24 = undefined
 
+-- | Works with closed type families
+--
+-- >>> x = $(autoapply [] ['getInt] 'test25)
+-- >>> :t x
+-- x :: ()
+type family ClosedFam (a :: Type) :: Constraint where
+  ClosedFam Int = ()
+test25 :: ClosedFam a => a -> ()
+test25 = undefined
+
+-- | Works with open type families
+--
+-- >>> x = $(autoapply [] ['getInt] 'test26)
+-- >>> :t x
+-- x :: ()
+type family OpenFam (a :: Type) :: Constraint
+-- type instance OpenFam Int = ()
+type instance OpenFam a = ()
+
+test26 :: OpenFam a => a -> ()
+test26 = undefined
+
 ----------------------------------------------------------------
 -- Examples from readme
 ----------------------------------------------------------------

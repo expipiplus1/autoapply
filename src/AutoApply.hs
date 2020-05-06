@@ -220,9 +220,16 @@ autoapply1 givens fun = do
             className <- case class' of
               DConT n -> pure n
               _ -> liftQ $ fail "unfolded predicate didn't begin with a ConT"
-            liftQ (isInstance className (sweeten <$> typeArgs)) >>= \case
-              False -> empty
-              True  -> pure ()
+
+            -- Ignore when the name is a type family because of
+            -- https://gitlab.haskell.org/ghc/ghc/issues/18153
+            liftQ (reifyWithWarning className) >>= \case
+              ClassI _ _ ->
+                liftQ (isInstance className (sweeten <$> typeArgs)) >>= \case
+                  False -> empty
+                  True  -> pure ()
+              FamilyI _ _ -> pure ()
+              _ -> liftQ $ fail "Predicate name isn't a class or a type family"
           Nothing ->
             liftQ
               $ fail
