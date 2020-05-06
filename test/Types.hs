@@ -276,6 +276,25 @@ test20 = undefined
 exitFailure :: IO a
 exitFailure = undefined
 
+-- | Respects basic constraints
+--
+-- >>> x = $(autoapply ['id] 'test21)
+-- >>> :t x
+-- x :: Num a => a -> (a, Bool)
+--
+-- >>> n = 1 :: Int
+-- >>> x = $(autoapply ['n] 'test21)
+-- >>> :t x
+-- x :: (Int, Bool)
+test21 :: Num a => a -> (a, Bool)
+test21 = undefined
+
+-- | Doesn't pass 'reverse' to '+'
+--
+-- >>> x = $(autoapply ['reverse] '(+))
+-- >>> :t x
+-- x :: Num a => a -> a -> a
+
 ----------------------------------------------------------------
 -- Examples from readme
 ----------------------------------------------------------------

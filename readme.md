@@ -107,8 +107,8 @@ It's important to note that `Monad` instance checking only goes as far as
 `template-haskell`'s `reifyInstances`. i.e. only the instance heads are
 checked.
 
-Aside for checking for a `Monad` instance, no constraints are checked. So `autoapply`
-will happily pass `reverse` to `(+)` yielding a value of type `Num ([a] -> [a]) => [a] -> [a]`.
+Constraints are checked (up to `reifyInstances`) so it won't pass `reverse` to
+`(+)` for example.
 
 Monadic binds are performed in the order of arguments passed to the wrapped
 function, and will be performed more than once if the argument is used multiple

@@ -13,7 +13,9 @@ let
   haskellPackages = with pkgs.haskell.lib;
     pkgs.haskell.packages.${compiler'}.override {
       overrides = self: super:
-        { } // pkgs.lib.optionalAttrs hoogle {
+        {
+          th-desugar = self.callHackage "th-desugar" "1.11" { };
+        } // pkgs.lib.optionalAttrs hoogle {
           ghc = super.ghc // { withPackages = super.ghc.withHoogle; };
           ghcWithPackages = self.ghc.withPackages;
         };
