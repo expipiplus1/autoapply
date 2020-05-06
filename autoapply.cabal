@@ -4,7 +4,7 @@ cabal-version: 1.24
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 27216da21b1f151858cc58ce39639ffdfedecbd71c40c10ca7e7a11c673a0103
+-- hash: e22e4b1852133c55a3ee5c1511abe1d010dad6028b53b46b2d8e56a70d25e5b7
 
 name:           autoapply
 version:        0.3
@@ -43,7 +43,7 @@ library
   default-extensions: DeriveFoldable DeriveFunctor DeriveTraversable DerivingStrategies FlexibleContexts KindSignatures LambdaCase PatternSynonyms RankNTypes RecordWildCards ScopedTypeVariables TemplateHaskellQuotes TupleSections TypeApplications TypeFamilies ViewPatterns
   ghc-options: -Wall
   build-depends:
-      base >=4.13 && <5
+      base >=4.12 && <5
     , logict
     , mtl
     , template-haskell
