@@ -5,7 +5,8 @@ module AutoApply
 
 import           Control.Applicative
 import           Control.Arrow                  ( (>>>) )
-import           Control.Monad
+import           Control.Monad           hiding ( fail )
+import           Control.Monad.Fail             ( MonadFail(..) )
 import           Control.Monad.Logic            ( LogicT
                                                 , observeManyT
                                                 )
@@ -21,7 +22,7 @@ import           Data.Maybe
 import           Data.Traversable
 import           Language.Haskell.TH
 import           Language.Haskell.TH.Desugar
-import           Prelude                 hiding ( pred )
+import           Prelude                 hiding ( fail, pred )
 
 -- | @autoapply argsSubsuming argsUnifying fun@ creates an expression which is
 -- equal to @fun@ applied to as many of the values in @argsSubsuming@ and
