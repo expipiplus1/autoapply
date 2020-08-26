@@ -1,5 +1,5 @@
 name: autoapply
-version: 0.4
+version: 0.4.1
 synopsis: Template Haskell to automatically pass values to functions
 description: See readme.md
 category: Template Haskell
@@ -25,12 +25,13 @@ library:
 tests:
   doctests:
     main: Doctests.hs
-    other-modules: ""
+    other-modules: Types
     source-dirs:
       - test
     dependencies:
       - base
       - doctest
+      - autoapply
 
 custom-setup:
  dependencies:
