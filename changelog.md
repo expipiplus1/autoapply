@@ -2,6 +2,9 @@
 
 ## WIP
 
+## [0.4.1] - 2020-08-26
+  - Fix tests in dist
+
 ## [0.4] - 2020-05-06
   - Allow specifying if the types of potential arguments should subsume or just
     unify with the function's argument types
