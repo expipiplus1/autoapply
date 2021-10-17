@@ -131,7 +131,7 @@ test5 = const ()
 -- >>> :t x
 -- x :: ()
 test6 :: (forall a b. a -> b) -> ()
-test6 = const ()
+test6 = \x -> const () x
 autoapplyDecs (<> "'") [] ['id] ['test6]
 test6' :: (forall a b. a -> b) -> ()
 
@@ -141,7 +141,7 @@ test6' :: (forall a b. a -> b) -> ()
 -- >>> :t x
 -- x :: (forall a. a) -> ()
 test7 :: (forall a. a) -> ()
-test7 = const ()
+test7 = \x -> const () x
 
 -- | 'id' is instantiated twice at different types
 -- >>> $(autoapply [] ['id] 'test8)
@@ -313,7 +313,7 @@ test22 = undefined
 --
 -- >>> x = $(autoapply [] [] 'test23)
 -- <BLANKLINE>
--- <interactive>:355:7: error:
+-- <interactive>:...: error:
 --     • "Impossible" Finding argument provenances failed (unless the function context containts a class with no instances)
 --     • In the untyped splice: $(autoapply [] [] 'test23)
 class MyClassWithNoInstances (a :: Type) where

@@ -260,7 +260,7 @@ autoapply1 givens fun = do
           BoundPure _ (Given _ n _) -> DVarE n
           Argument  n _             -> DVarE n
         )
-  exp' <- dsDoStmts (bs <> [NoBindS (sweeten ret')])
+  exp' <- dsDoStmts Nothing (bs <> [NoBindS (sweeten ret')])
 
   -- Typing the arguments here is important, if we don't then some skolems
   -- might escape!
@@ -336,20 +336,20 @@ typeFtoD = unFix >>> \case
   ArrowF   -> DArrowT
   LitF l   -> DLitT l
 
-varBndrName :: DTyVarBndr -> Name
+varBndrName :: DTyVarBndrUnit -> Name
 varBndrName = \case
-  DPlainTV n    -> n
-  DKindedTV n _ -> n
+  DPlainTV n ()   -> n
+  DKindedTV n () _ -> n
 
 -- | Raise foralls on the spine of the function type to the top
 --
 -- For example @forall a. a -> forall b. b@ becomes @forall a b. a -> b@
 raiseForalls :: DType -> DType
 raiseForalls = go >>> \case
-  (vs, ctx, t) -> DForallT ForallVis vs . DConstrainedT ctx $ t
+  (vs, ctx, t) -> DForallT (DForallVis vs) . DConstrainedT ctx $ t
  where
   go = \case
-    DForallT _ vs t -> let (vs', ctx', t') = go t in (vs <> vs', ctx', t')
+    DForallT vs t -> let (vs', ctx', t') = go t in (telescopeBndrs vs <> vs', ctx', t')
     DConstrainedT ctx t ->
       let (vs', ctx', t') = go t in (vs', ctx <> ctx', t')
     l :~> r -> let (vs, ctx, r') = go r in (vs, ctx, l :~> r')
@@ -391,20 +391,26 @@ reifyVal d n = dsReify n >>= \case
 
 stripForall :: DType -> ([Name], DType)
 stripForall = raiseForalls >>> \case
-  DForallT _ vs (DConstrainedT _ ty) -> (varBndrName <$> vs, ty)
-  DForallT _ vs ty   -> (varBndrName <$> vs, ty)
+  DForallT vs (DConstrainedT _ ty) -> (varBndrName <$> telescopeBndrs vs, ty)
+  DForallT vs ty   -> (varBndrName <$> telescopeBndrs vs, ty)
   DConstrainedT _ ty -> ([], ty)
   ty                 -> ([], ty)
 
-unravel :: DType -> ([DTyVarBndr], [DPred], [DType], DType)
+telescopeBndrs :: DForallTelescope -> [DTyVarBndrUnit]
+telescopeBndrs = \case
+  DForallVis vs -> vs
+  DForallInvis vs -> (() <$) <$> vs
+
+unravel :: DType -> ([DTyVarBndrUnit], [DPred], [DType], DType)
 unravel t =
   let (argList, ret) = unravelDType t
       go             = \case
         DFANil             -> ([], [], [])
-        DFAForalls _ vs as -> (vs, [], []) <> go as
+        DFAForalls vs as -> (telescopeBndrs vs, [], []) <> go as
         DFACxt  preds as   -> ([], preds, []) <> go as
         DFAAnon a     as   -> ([], [], [a]) <> go as
   in  let (vs, preds, args) = go argList in (vs, preds, args, ret)
 
 note :: MonadFail m => String -> Maybe a -> m a
 note s = maybe (fail s) pure
+

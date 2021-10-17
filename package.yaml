@@ -18,7 +18,7 @@ library:
     - logict
     - mtl
     - template-haskell
-    - th-desugar >= 1.11 && < 1.12
+    - th-desugar >= 1.12 && < 1.13
     - transformers
     - unification-fd
 

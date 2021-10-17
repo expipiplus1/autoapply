@@ -1,6 +1,7 @@
 # Change Log
 
 ## WIP
+  - Bump th-desugar version
 
 ## [0.4.1] - 2020-08-26
   - Fix tests in dist
