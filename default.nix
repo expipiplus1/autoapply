@@ -1,4 +1,4 @@
-{ nixpkgsSrc ? <nixpkgs>, pkgs ? import nixpkgsSrc { }, compiler ? null
+{ pkgs ? import ./nixpkgs.nix, compiler ? null
 , extraOverrides ? _: _: { }, modifier ? x: x }:
 
 let
