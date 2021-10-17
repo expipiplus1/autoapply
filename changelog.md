@@ -1,6 +1,8 @@
 # Change Log
 
 ## WIP
+
+## [0.4.1.1] - 2021-10-17
   - Bump th-desugar version
 
 ## [0.4.1] - 2020-08-26
