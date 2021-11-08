@@ -4,10 +4,10 @@ cabal-version: 1.24
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 94c729e99e997c6cf6e7ed20c487a0f59f441c863050dd444c9d9850879b6f08
+-- hash: c791b9630a664c7d4265b86b261c0c510643c9e45c1dbdbd0e81382640bf0e9d
 
 name:           autoapply
-version:        0.4.1.1
+version:        0.4.1.2
 synopsis:       Template Haskell to automatically pass values to functions
 description:    See readme.md
 category:       Template Haskell
