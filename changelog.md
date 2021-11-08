@@ -1,6 +1,7 @@
 # Change Log
 
 ## WIP
+  - Loosen th-desugar upper bound
 
 ## [0.4.1.1] - 2021-10-17
   - Bump th-desugar version
