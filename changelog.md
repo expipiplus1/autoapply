@@ -2,6 +2,9 @@
 
 ## WIP
 
+## [0.4.1.2] - 2021-11-08
+  - Loosen th-desugar upper bound
+
 ## [0.4.1.1] - 2021-10-17
   - Bump th-desugar version
 

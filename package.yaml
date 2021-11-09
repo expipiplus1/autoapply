@@ -1,5 +1,5 @@
 name: autoapply
-version: "0.4.1.1"
+version: "0.4.1.2"
 synopsis: Template Haskell to automatically pass values to functions
 description: See readme.md
 category: Template Haskell
@@ -19,7 +19,7 @@ library:
     - logict
     - mtl
     - template-haskell
-    - th-desugar >= 1.12 && < 1.13
+    - th-desugar >= 1.12 && < 1.14
     - transformers
     - unification-fd
 

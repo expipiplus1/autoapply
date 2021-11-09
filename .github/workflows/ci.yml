@@ -67,6 +67,6 @@ jobs:
         drvs=$(nix-instantiate | sed 's/!.*//')
         nix-build --no-out-link $drvs
         reqs=$(nix-store --query --requisites --include-outputs $drvs)
-        nix copy \
+        nix --extra-experimental-features nix-command copy \
           --to 's3://nix-cache?region=ap-southeast-1&scheme=https&endpoint=binarycache.home.monoid.al' \
           $reqs
