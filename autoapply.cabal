@@ -1,13 +1,13 @@
 cabal-version: 1.24
 
--- This file has been generated from package.yaml by hpack version 0.34.4.
+-- This file has been generated from package.yaml by hpack version 0.34.5.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c791b9630a664c7d4265b86b261c0c510643c9e45c1dbdbd0e81382640bf0e9d
+-- hash: 1c17698dcf551bc1034b52d24e7dee1e284a0f7ce7e13070fdafc7dec2216162
 
 name:           autoapply
-version:        0.4.1.2
+version:        0.4.1.3
 synopsis:       Template Haskell to automatically pass values to functions
 description:    See readme.md
 category:       Template Haskell
@@ -64,7 +64,7 @@ library
     , logict
     , mtl
     , template-haskell
-    , th-desugar >=1.12 && <1.14
+    , th-desugar >=1.12 && <1.15
     , transformers
     , unification-fd
   default-language: Haskell2010
