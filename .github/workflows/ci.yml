@@ -7,7 +7,7 @@ jobs:
 
     strategy:
       matrix:
-        ghc: ['9.4', '9.2', '9.0', '8.10', '8.8']
+        ghc: ['9.2', '9.0', '8.10', '8.8']
         cabal: ['latest']
         os: [ubuntu-latest]
       fail-fast: false
